@@ -1,0 +1,15 @@
+**/node_modules/
+**/target/
+**/dist/
+**/.ui-test-dist/
+**/.codex-tmp/
+**/.idea/
+**/.env
+**/.env.*
+!**/.env.example
+**/application-local.yml
+**/application-prod.yml
+**/*.log
+**/*.tsbuildinfo
+**/__pycache__/
+.DS_Store

@@ -55,7 +55,7 @@ src/main/java/com/springda/devnest/
 src/main/resources/
 ├── application.yml
 ├── application-local.example.yml
-└── db/migration/  # V1 基础结构、V2–V12 增量迁移
+└── db/migration/  # V1 基础结构、V2–V13 增量迁移
 ```
 
 每个功能包内部按 `Controller → Service → Repository → Entity` 分层。
@@ -86,7 +86,7 @@ sql/mysql8/00_create_database.sql
 src/main/resources/db/migration/V1__init_schema.sql
 ```
 
-后续版本会继续按顺序执行增量迁移，其中 V7 引入管理员人员管理，V8 加固一次性邀请、临时密码、登录锁定和 JWT 会话撤销，V9 扩展任务日期、截止时间、优先级、完成时间与归档状态，V12 保存管理员操作审计记录。
+后续版本会继续按顺序执行增量迁移，其中 V7 引入管理员人员管理，V8 加固一次性邀请、临时密码、登录锁定和 JWT 会话撤销，V9 扩展任务日期、截止时间、优先级、完成时间与归档状态，V12 保存管理员操作审计记录，V13 将审计响应状态字段修正为与 JPA `int` 映射一致的 `INT`。
 
 > V8 上线提示：迁移后，V8 之前签发的 JWT 因不含 `auth_version` 会统一失效，用户需要重新登录；V7 中尚未注册的旧邀请没有可交付的一次性 Token，管理员需要在人员管理页为这些邮箱重新生成邀请链接。
 

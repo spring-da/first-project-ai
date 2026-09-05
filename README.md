@@ -51,6 +51,6 @@ mvn -B -ntp verify
 docker compose --project-directory first-project-back -f first-project-back/compose.yml up -d --build
 ```
 
-本次功能需要前后端一起更新；Flyway 会自动执行 V12 管理员审计表迁移。前端访问端口为 8000。
+本次功能需要前后端一起更新；Flyway 会自动执行 V12 管理员审计表迁移和 V13 字段类型修正。前端访问端口为 8000。
 
 接口契约见 [API 文档](first-project-back/docs/API.md)。

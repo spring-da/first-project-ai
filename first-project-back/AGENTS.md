@@ -36,7 +36,7 @@ mvn spring-boot:run
 - `image/`：Markdown 图片元数据、文件签名检查、OSS 存取和按账号鉴权读取。
 - `common/`：基础实体、业务异常和统一 `ProblemDetail` 错误响应。
 - `src/main/resources/application.yml`：环境变量映射、JPA/Flyway、multipart、Actuator 和连接池配置。
-- `src/main/resources/db/migration/`：按版本递增的生产数据库变更；当前为 V1–V11。
+- `src/main/resources/db/migration/`：按版本递增的生产数据库变更；当前为 V1–V13。
 - `src/test/java/`：服务测试与 Spring/MockMvc 集成测试。
 - `docs/`：API、Markdown 导入导出/恢复和 OSS 部署说明。
 - `compose.yml`：MySQL、后端和同级前端的本地/服务器编排入口。
@@ -71,7 +71,7 @@ SecurityFilterChain → JWT 解析 → Controller → Service → Repository →
 
 - `BaseEntity` 统一使用 36 字符 UUID 和 UTC `Instant` 创建/更新时间；新实体应保持相同策略。
 - JPA 配置为 `ddl-auto=validate`。生产表结构只能通过 Flyway 修改。
-- 已发布的迁移文件不可编辑、重命名或重排。下一次结构变化创建新的 `V12__meaningful_name.sql`，并同步 Entity、索引、测试和文档。
+- 已发布的迁移文件不可编辑、重命名或重排。下一次结构变化创建新的顺序迁移，并同步 Entity、索引、测试和文档。
 - MySQL 迁移使用项目现有的 `utf8mb4`、命名、外键和索引风格。对 H2 通过不代表 MySQL 语法一定正确；迁移变更还需在 MySQL 8 验证。
 - 不得为了让开发环境启动而改成生产 `create`/`update`/`create-drop`。`create-drop` 只允许测试属性使用。
 - 删除、级联和唯一约束必须明确评估已有数据、账号隔离及回滚/备份影响；不要在未获授权时执行生产迁移或破坏性数据命令。

@@ -111,6 +111,12 @@ public class AuthService {
         return response(user);
     }
 
+    @Transactional
+    public void logoutAll(String userId) {
+        var user = users.findById(userId).orElseThrow(() -> new NotFoundException("账户", userId));
+        user.revokeSessions();
+    }
+
     private AuthDtos.AuthResponse response(UserEntity user) {
         return new AuthDtos.AuthResponse(
                 tokens.createAccessToken(user),

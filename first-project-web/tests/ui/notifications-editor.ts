@@ -100,7 +100,7 @@ const logs: DevLogEntry[] = Array.from({ length: knowledgeItemCount }, (_, index
 const adminDataCount = Math.min(80, Math.max(1, Number(scenario.get('admin-data')) || 1))
 const adminWorkspaceDocuments = Array.from({ length: adminDataCount }, (_, index) => ({
   id: `admin-document-${index + 1}`, title: `成员文章 ${index + 1} · ${index % 2 ? '采购流程记录' : '技术方案说明'}`, fileName: `member-note-${index + 1}.md`,
-  content: `# 成员文章 ${index + 1}\n\n这是隔离环境中的管理员只读文章。\n\n## 阅读区验证\n\n${'长内容应当只在右侧阅读区滚动，不应拉长整个弹窗。\n\n'.repeat(18)}`,
+  content: `# 成员文章 ${index + 1}\n\n这是隔离环境中的管理员代管文章。\n\n## 阅读区验证\n\n${'长内容应当只在右侧阅读区滚动，不应拉长整个页面。\n\n'.repeat(18)}`,
   excerpt: '用于验证搜索、分页与独立 Markdown 阅读区域。', contentLength: 1200, domainId: 'fixture-domain', favorite: index % 4 === 0, version: 0, createdAt: now, updatedAt: new Date(Date.now() - index * 60000).toISOString(),
 }))
 const adminWorkspaceSnippets = Array.from({ length: adminDataCount }, (_, index): CodeSnippet => ({ id: `admin-snippet-${index + 1}`, title: `成员代码 ${index + 1}`, code: `const memberValue${index + 1} = { enabled: true }\nconsole.log(memberValue${index + 1})`, language: index % 3 === 0 ? 'JSON' : 'TypeScript', domainId: 'fixture-domain', favorite: false, createdAt: now, updatedAt: new Date(Date.now() - index * 70000).toISOString() }))
@@ -114,6 +114,10 @@ let adminAccounts = [
   { userId: 'fixture-friend', invitationId: 'invite-friend', email: 'friend@example.com', displayName: '朋友账户', role: 'USER', registered: true, enabled: true, mustChangePassword: false, invitedAt: now, invitationExpiresAt: null, invitationExpired: false, registeredAt: now },
   { userId: 'fixture-disabled', invitationId: 'invite-disabled', email: 'disabled@example.com', displayName: '已禁用用户', role: 'USER', registered: true, enabled: false, mustChangePassword: true, invitedAt: now, invitationExpiresAt: null, invitationExpired: false, registeredAt: now },
   { userId: null, invitationId: 'invite-pending', email: 'pending@example.com', displayName: null, role: null, registered: false, enabled: false, mustChangePassword: false, invitedAt: now, invitationExpiresAt: invitationExpiry, invitationExpired: false, registeredAt: null },
+]
+const adminAuditEvents = [
+  { id: 'audit-2', actorEmail: 'fixture@example.invalid', targetId: 'fixture-friend', targetLabel: 'friend@example.com', action: 'MEMBER_WORKSPACE_WRITE', resourceType: 'markdown-documents', httpMethod: 'PUT', requestPath: '/api/v1/markdown-documents/fixture-note', responseStatus: 200, success: true, createdAt: now },
+  { id: 'audit-1', actorEmail: 'fixture@example.invalid', targetId: 'fixture-disabled', targetLabel: 'disabled@example.com', action: 'ACCOUNT_DISABLED', resourceType: 'accounts', httpMethod: 'PATCH', requestPath: '/api/v1/admin/accounts/fixture-disabled/status', responseStatus: 200, success: true, createdAt: new Date(Date.now() - 60000).toISOString() },
 ]
 const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
 const memberData = new Map<string, { tasks: typeof tasks; projects: typeof projects; documents: typeof documents; snippets: typeof snippets; logs: typeof logs; domains: typeof domains; profile: { name: string; role: string; bio: string; avatarUrl: string | null } }>()
@@ -173,11 +177,13 @@ window.fetch = async (input, options = {}) => {
     return json({ detail: '测试：邮箱或密码不正确，请重试。' }, 401)
   }
   if (path === '/auth/me') return json(fixtureUser)
+  if (path === '/auth/logout-all' && options.method === 'POST') return new Response(null, { status: 204 })
   if (path === '/auth/password' && options.method === 'PUT') {
     fixtureUser.mustChangePassword = false
     return json({ accessToken: 'fixture-only', tokenType: 'Bearer', expiresInSeconds: 86400, user: fixtureUser })
   }
   if (path === '/admin/accounts' && !options.method) return json(adminAccounts)
+  if (path.startsWith('/admin/audit-events') && !options.method) return json(adminAuditEvents)
   if (path === '/admin/invitations' && options.method === 'POST') {
     const email = JSON.parse(String(options.body)).email
     const account = { userId: null, invitationId: `invite-${++accountSequence}`, email, displayName: null, role: null, registered: false, enabled: false, mustChangePassword: false, invitedAt: now, invitationExpiresAt: invitationExpiry, invitationExpired: false, registeredAt: null }
@@ -205,7 +211,7 @@ window.fetch = async (input, options = {}) => {
       const account = adminAccounts.find((item) => item.userId === userId)!
       return json({
         account: { id: userId, email: account.email, displayName: account.displayName, role: account.role, enabled: account.enabled, registeredAt: account.registeredAt },
-        profile: { id: `profile-${userId}`, name: account.displayName, role: '内部协作者', bio: '仅用于验证管理员只读工作区布局。', avatarUrl: null, updatedAt: now },
+        profile: { id: `profile-${userId}`, name: account.displayName, role: '内部协作者', bio: '仅用于验证管理员代管工作区布局。', avatarUrl: null, updatedAt: now },
         domains: [{ id: 'fixture-domain', name: '写作与思考', description: '', sortOrder: 0, createdAt: now, updatedAt: now }],
         tasks: Array.from({ length: adminDataCount }, (_, index) => ({ id: `workspace-task-${index + 1}`, title: `整理用户工作区 ${index + 1}`, done: index % 3 === 0, sortOrder: index, scheduledDate: null, dueAt: null, priority: index % 4 === 0 ? 'HIGH' : 'NORMAL', completedAt: null, archived: false, createdAt: now, updatedAt: now })),
         projects: Array.from({ length: adminDataCount }, (_, index) => ({ id: `workspace-project-${index + 1}`, name: `成员项目 ${index + 1}`, description: '用于验证成员项目列表搜索与分页。', techStack: ['Vue', 'TypeScript'], status: 'BUILDING', progress: (index * 7) % 100, nextAction: '继续整理资料', createdAt: now, updatedAt: now })),
@@ -379,7 +385,7 @@ window.addEventListener('devnest:unauthorized', () => {
   useWorkspaceStore(pinia).clear()
   void router.push({ name: 'login' })
 })
-await router.replace(scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('admin') ? '/admin/accounts' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : '/knowledge')
+await router.replace(scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('admin') ? '/admin/accounts' : scenario.has('profile') ? '/profile' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : '/knowledge')
 app.mount('#app')
 
 const controls = document.createElement('details')

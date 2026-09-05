@@ -84,6 +84,14 @@ PUT /auth/password
 
 修改成功后返回新的登录响应和 JWT，并使修改前签发的 JWT 全部失效。管理员重置后会生成只显示一次的 20 位随机临时密码，默认 30 分钟过期；用户使用临时密码登录后只能访问 `GET /auth/me` 和 `PUT /auth/password`，其他接口返回带有 `code: PASSWORD_CHANGE_REQUIRED` 的 `403`，直至完成改密。临时密码过期后必须由管理员重新重置。
 
+### 退出全部设备
+
+```http
+POST /auth/logout-all
+```
+
+返回 `204 No Content`，并递增账户的 `authVersion`，使当前浏览器及其他设备此前签发的全部 JWT 立即失效。注册、登录、当前账户、修改密码和注销响应均设置 `Cache-Control: no-store`。
+
 ## 管理员接口
 
 以下接口仅允许 `ADMIN`。服务端会在每次受保护请求中重新读取账户状态与角色，因此禁用、删除和权限变更不会等待旧 JWT 过期才生效。
@@ -97,6 +105,7 @@ PUT /auth/password
 | 启用或禁用账号 | `PATCH /admin/accounts/{userId}/status` | `200` 更新后的账号 |
 | 重置用户密码 | `POST /admin/accounts/{userId}/reset-password` | `200` 一次性临时密码和过期时间 |
 | 永久删除账号 | `DELETE /admin/accounts/{userId}` | `204` |
+| 查看管理员操作记录 | `GET /admin/audit-events?limit=40` | `200` 最近 1–100 条记录 |
 | 只读查看单个用户工作区 | `GET /admin/accounts/{userId}/workspace` | `200` 用户资料及分模块数据 |
 | 只读查看用户 Markdown 正文 | `GET /admin/accounts/{userId}/workspace/markdown-documents/{documentId}` | `200` |
 | 只读读取用户 Markdown 图片 | `GET /admin/accounts/{userId}/workspace/markdown-images/{imageId}` | `200` 图片字节 |
@@ -144,6 +153,8 @@ PUT /auth/password
 
 JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码都会递增版本，因此操作前签发的全部 JWT 会立即失效。重置密码还会设置 `mustChangePassword=true`。永久删除会通过现有 MySQL 外键级联删除该账号的工作区数据，并撤销其注册资格；若以后需要重新注册，管理员必须再次添加该邮箱。管理员账号不能被禁用、重置或删除。
 
+账号邀请、启用、禁用、密码重置、永久删除，以及管理员通过 `X-Workspace-Owner` 发起的成员数据写操作都会保存审计事件。事件仅包含管理员邮箱、目标、资源类型、HTTP 方法、结果和时间，不记录密码、邀请 Token 或成员正文；列表只允许管理员读取并设置 `Cache-Control: no-store`。
+
 ## 资源接口
 
 | 模块 | 查询 | 新增 | 修改 | 删除 |
@@ -156,7 +167,9 @@ JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码�
 | 开发日志 | `GET /logs` | `POST /logs` | `PUT /logs/{id}` | `DELETE /logs/{id}` |
 | 个人资料 | `GET /profile` | — | `PUT /profile` | — |
 
-所有查询都使用 JWT 中的用户 ID 过滤数据。客户端不能指定 `ownerId`，从接口层避免读取或修改其他用户的数据。
+普通成员的所有查询都使用 JWT 中的用户 ID 过滤数据，不能指定 `ownerId`；只有服务端重新确认当前身份为管理员后，才会接受 `X-Workspace-Owner` 代管目标。
+
+资料中的 `avatarUrl` 允许为空；非空时必须是合法的 `http://` 或 `https://` 地址，服务端不会接受脚本协议或带账号凭据的 URL。
 
 任务响应包含 `scheduledDate`（本地日历日期）、`dueAt`（UTC 时间点）、`priority`（`LOW` / `NORMAL` / `HIGH` / `URGENT`）、`completedAt` 和 `archived`。创建请求示例：
 

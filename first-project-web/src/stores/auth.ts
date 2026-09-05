@@ -1,7 +1,7 @@
 import { resetWorkspaceRequests, setRequestWorkspace } from '../services/workspaceContext'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { apiRequest, jsonBody, readStoredSession, SESSION_KEY } from '../services/api'
+import { apiRequest, jsonBody, readStoredSession, writeStoredSession, SESSION_KEY } from '../services/api'
 import type { AdminWorkspaceAccount, AuthResponse, AuthSession, AuthUser } from '../types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -25,7 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
       ...response,
       expiresAt: Date.now() + response.expiresInSeconds * 1000,
     }
-    localStorage.setItem(SESSION_KEY, JSON.stringify(value))
+    writeStoredSession(value)
     session.value = value
   }
 
@@ -86,10 +86,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function logoutAll() {
+    busy.value = true
+    error.value = ''
+    try {
+      await apiRequest<void>('/auth/logout-all', { method: 'POST' })
+      clear()
+      return true
+    } catch (cause) {
+      error.value = cause instanceof Error ? cause.message : '登录会话注销失败，请稍后重试'
+      return false
+    } finally {
+      busy.value = false
+    }
+  }
+
   function updateUser(user: AuthUser) {
     if (!session.value) return
     const value = { ...session.value, user }
-    localStorage.setItem(SESSION_KEY, JSON.stringify(value))
+    writeStoredSession(value)
     session.value = value
   }
 
@@ -122,6 +137,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshUser,
     updateUser,
     changePassword,
+    logoutAll,
     markPasswordChangeRequired,
     clear,
   }

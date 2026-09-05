@@ -80,7 +80,7 @@ OSS 是扁平对象存储，这些目录由对象键中的 `/` 在控制台中�
 {"id":"图片UUID","url":"/api/v1/markdown-images/图片UUID","contentType":"image/png","size":12345}
 ```
 
-`GET /api/v1/markdown-images/{id}`：JWT Bearer 认证，只有图片所属账号可访问。后端从 OSS 流式返回图片，带 `private, max-age=3600, immutable`、`Vary: Authorization` 和 `nosniff` 响应头。其他账号返回 404；未登录返回 401。管理员只读工作区使用独立的管理员图片接口并再次校验管理员状态。文件缺失/格式错误返回 400，超过 multipart 上限返回 413，OSS 未配置或不可用返回 503。
+`GET /api/v1/markdown-images/{id}`：JWT Bearer 认证，只有图片所属账号可访问。后端从 OSS 流式返回图片，带 `private, max-age=3600, immutable`、`Vary: Authorization` 和 `nosniff` 响应头。其他账号返回 404；未登录返回 401。管理员代管成员工作区时会再次校验管理员状态和目标账号。文件缺失/格式错误返回 400，超过 multipart 上限返回 413，OSS 未配置或不可用返回 503。
 
 `GET /api/v1/public/markdown-shares/{token}/images/{id}`：无需账号，但必须提供仍在有效期内且未撤销的文章分享 Token，并且图片 ID 必须被该分享文章的当前正文实际引用。响应使用 `no-store` 与 `nosniff`；无效链接、回收站文章、其他图片均返回 404。Token 不会写入正文，公开阅读页只在内存请求路径中使用它。
 

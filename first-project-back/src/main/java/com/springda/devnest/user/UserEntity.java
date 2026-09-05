@@ -100,7 +100,7 @@ public class UserEntity extends BaseEntity implements UserDetails {
 
     public void setEnabled(boolean enabled) {
         if (this.enabled && !enabled) {
-            invalidateSessions();
+            revokeSessions();
         }
         this.enabled = enabled;
     }
@@ -110,7 +110,7 @@ public class UserEntity extends BaseEntity implements UserDetails {
         this.forcePasswordChange = forcePasswordChange;
         this.temporaryPasswordExpiresAt = null;
         clearLoginFailures();
-        invalidateSessions();
+        revokeSessions();
     }
 
     public void resetPassword(String passwordHash, Instant expiresAt) {
@@ -118,7 +118,7 @@ public class UserEntity extends BaseEntity implements UserDetails {
         this.forcePasswordChange = true;
         this.temporaryPasswordExpiresAt = expiresAt;
         clearLoginFailures();
-        invalidateSessions();
+        revokeSessions();
     }
 
     public void requirePasswordChange() {
@@ -143,7 +143,7 @@ public class UserEntity extends BaseEntity implements UserDetails {
         loginLockedUntil = null;
     }
 
-    private void invalidateSessions() {
+    public void revokeSessions() {
         authVersion++;
     }
 

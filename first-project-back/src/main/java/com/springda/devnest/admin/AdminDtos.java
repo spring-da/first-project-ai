@@ -48,4 +48,25 @@ public final class AdminDtos {
             Instant expiresAt
     ) {
     }
+
+    public record AuditEventResponse(
+            String id,
+            String actorEmail,
+            String targetId,
+            String targetLabel,
+            AdminAuditAction action,
+            String resourceType,
+            String httpMethod,
+            String requestPath,
+            int responseStatus,
+            boolean success,
+            Instant createdAt
+    ) {
+        static AuditEventResponse from(AdminAuditEventEntity entity) {
+            return new AuditEventResponse(
+                    entity.getId(), entity.getActorEmail(), entity.getTargetId(), entity.getTargetLabel(),
+                    entity.getAction(), entity.getResourceType(), entity.getHttpMethod(),
+                    entity.getRequestPath(), entity.getResponseStatus(), entity.isSuccess(), entity.getCreatedAt());
+        }
+    }
 }

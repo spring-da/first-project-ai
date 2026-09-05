@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -27,15 +28,31 @@ public class AdminController {
 
     private final AdminService adminService;
     private final AdminWorkspaceService workspaceService;
+    private final AdminAuditService auditService;
 
-    public AdminController(AdminService adminService, AdminWorkspaceService workspaceService) {
+    public AdminController(
+            AdminService adminService,
+            AdminWorkspaceService workspaceService,
+            AdminAuditService auditService
+    ) {
         this.adminService = adminService;
         this.workspaceService = workspaceService;
+        this.auditService = auditService;
     }
 
     @GetMapping("/accounts")
-    List<AdminDtos.AccountResponse> list(@AuthenticationPrincipal Jwt jwt) {
-        return adminService.listAccounts(jwt.getSubject());
+    ResponseEntity<List<AdminDtos.AccountResponse>> list(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(adminService.listAccounts(jwt.getSubject()));
+    }
+
+    @GetMapping("/audit-events")
+    ResponseEntity<List<AdminDtos.AuditEventResponse>> auditEvents(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "40") int limit
+    ) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(auditService.list(jwt.getSubject(), limit));
     }
 
     @PostMapping("/invitations")

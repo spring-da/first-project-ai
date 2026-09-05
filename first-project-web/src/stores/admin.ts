@@ -1,11 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiRequest, jsonBody } from '../services/api'
-import type { AdminAccount, AdminWorkspaceAccount, AdminWorkspaceSnapshot, InvitationSecret, MarkdownDocument, TemporaryPasswordSecret } from '../types'
+import type { AdminAccount, AdminAuditEvent, AdminWorkspaceAccount, AdminWorkspaceSnapshot, InvitationSecret, MarkdownDocument, TemporaryPasswordSecret } from '../types'
 
 export const useAdminStore = defineStore('admin', () => {
   const accounts = ref<AdminAccount[]>([])
   const loading = ref(false)
+  const auditEvents = ref<AdminAuditEvent[]>([])
+  const auditLoading = ref(false)
+  const auditError = ref('')
   const mutating = ref(false)
   const error = ref('')
 
@@ -19,6 +22,19 @@ export const useAdminStore = defineStore('admin', () => {
       throw cause
     } finally {
       loading.value = false
+    }
+  }
+
+  async function loadAudit() {
+    auditLoading.value = true
+    auditError.value = ''
+    try {
+      auditEvents.value = await apiRequest<AdminAuditEvent[]>('/admin/audit-events?limit=40')
+    } catch (cause) {
+      auditError.value = cause instanceof Error ? cause.message : '操作记录加载失败'
+      throw cause
+    } finally {
+      auditLoading.value = false
     }
   }
 
@@ -101,10 +117,14 @@ export const useAdminStore = defineStore('admin', () => {
 
   return {
     accounts,
+    auditEvents,
     loading,
+    auditLoading,
+    auditError,
     mutating,
     error,
     load,
+    loadAudit,
     invite,
     rotateInvitation,
     revokeInvitation,

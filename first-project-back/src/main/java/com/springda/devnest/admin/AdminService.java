@@ -32,6 +32,7 @@ public class AdminService {
     private final ImageStorage imageStorage;
     private final AccountCredentialService credentials;
     private final AppProperties properties;
+    private final AdminAuditService audit;
 
     public AdminService(
             UserRepository users,
@@ -40,7 +41,8 @@ public class AdminService {
             MarkdownImageRepository images,
             ImageStorage imageStorage,
             AccountCredentialService credentials,
-            AppProperties properties
+            AppProperties properties,
+            AdminAuditService audit
     ) {
         this.users = users;
         this.invitations = invitations;
@@ -49,6 +51,7 @@ public class AdminService {
         this.imageStorage = imageStorage;
         this.credentials = credentials;
         this.properties = properties;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -86,7 +89,7 @@ public class AdminService {
 
     @Transactional
     public AdminDtos.InvitationSecretResponse invite(String adminId, AdminDtos.InviteRequest request) {
-        requireAdmin(adminId);
+        var admin = requireAdmin(adminId);
         var email = normalizeEmail(request.email());
         if (users.existsByEmailIgnoreCase(email)) {
             throw new ConflictException("该邮箱已经注册");
@@ -101,12 +104,14 @@ public class AdminService {
         var account = new AdminDtos.AccountResponse(
                 null, invitation.getId(), invitation.getEmail(), null, null,
                 false, false, false, invitation.getCreatedAt(), expiresAt, false, null);
+        audit.record(adminId, admin.getEmail(), invitation.getId(), invitation.getEmail(),
+                AdminAuditAction.INVITATION_CREATED, "invitations", "POST", "/api/v1/admin/invitations", 201, true);
         return new AdminDtos.InvitationSecretResponse(account, token, expiresAt);
     }
 
     @Transactional
     public AdminDtos.InvitationSecretResponse rotateInvitation(String adminId, String invitationId) {
-        requireAdmin(adminId);
+        var admin = requireAdmin(adminId);
         var invitation = invitations.findById(invitationId)
                 .orElseThrow(() -> new NotFoundException("注册邀请", invitationId));
         if (invitation.isRegistered()) {
@@ -115,50 +120,66 @@ public class AdminService {
         var token = credentials.newInvitationToken();
         var expiresAt = Instant.now().plus(properties.accountSecurity().invitationTokenTtl());
         invitation.rotateToken(credentials.hashInvitationToken(token), expiresAt);
+        audit.record(adminId, admin.getEmail(), invitation.getId(), invitation.getEmail(),
+                AdminAuditAction.INVITATION_ROTATED, "invitations", "POST",
+                "/api/v1/admin/invitations/" + invitationId + "/rotate-token", 200, true);
         return new AdminDtos.InvitationSecretResponse(
                 pendingResponse(invitation), token, expiresAt);
     }
 
     @Transactional
     public void revokeInvitation(String adminId, String invitationId) {
-        requireAdmin(adminId);
+        var admin = requireAdmin(adminId);
         var invitation = invitations.findById(invitationId)
                 .orElseThrow(() -> new NotFoundException("注册邀请", invitationId));
         if (invitation.isRegistered()) {
             throw new ConflictException("该邮箱已经注册，请管理对应账号");
         }
         invitations.delete(invitation);
+        audit.record(adminId, admin.getEmail(), invitation.getId(), invitation.getEmail(),
+                AdminAuditAction.INVITATION_REVOKED, "invitations", "DELETE",
+                "/api/v1/admin/invitations/" + invitationId, 204, true);
     }
 
     @Transactional
     public AdminDtos.AccountResponse setEnabled(String adminId, String userId, boolean enabled) {
-        requireAdmin(adminId);
+        var admin = requireAdmin(adminId);
         var user = manageableUser(userId);
         user.setEnabled(enabled);
         var invitation = invitations.findByEmailIgnoreCase(user.getEmail()).orElse(null);
+        audit.record(adminId, admin.getEmail(), user.getId(), user.getEmail(),
+                enabled ? AdminAuditAction.ACCOUNT_ENABLED : AdminAuditAction.ACCOUNT_DISABLED,
+                "accounts", "PATCH", "/api/v1/admin/accounts/" + userId + "/status", 200, true);
         return registeredResponse(user, invitation);
     }
 
     @Transactional
     public AdminDtos.TemporaryPasswordResponse resetPassword(String adminId, String userId) {
-        requireAdmin(adminId);
+        var admin = requireAdmin(adminId);
         var user = manageableUser(userId);
         var temporaryPassword = credentials.newTemporaryPassword();
         var expiresAt = Instant.now().plus(properties.accountSecurity().temporaryPasswordTtl());
         user.resetPassword(passwordEncoder.encode(temporaryPassword), expiresAt);
+        audit.record(adminId, admin.getEmail(), user.getId(), user.getEmail(),
+                AdminAuditAction.ACCOUNT_PASSWORD_RESET, "accounts", "POST",
+                "/api/v1/admin/accounts/" + userId + "/reset-password", 200, true);
         return new AdminDtos.TemporaryPasswordResponse(temporaryPassword, expiresAt);
     }
 
     @Transactional
     public void deleteAccount(String adminId, String userId) {
-        requireAdmin(adminId);
+        var admin = requireAdmin(adminId);
         var user = manageableUser(userId);
+        var targetEmail = user.getEmail();
         var objectKeys = images.findAllByOwnerId(userId).stream()
                 .map(image -> image.getObjectKey())
                 .toList();
         invitations.deleteByRegisteredUserId(userId);
         users.delete(user);
         users.flush();
+        audit.record(adminId, admin.getEmail(), userId, targetEmail,
+                AdminAuditAction.ACCOUNT_DELETED, "accounts", "DELETE",
+                "/api/v1/admin/accounts/" + userId, 204, true);
 
         if (!objectKeys.isEmpty()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { BookOpen, CheckCircle2, Cloud, Code2, Edit3, FolderKanban, KeyRound, LogOut, Mail, Moon, RefreshCw, ShieldCheck, Sun } from 'lucide-vue-next'
+import { BookOpen, CheckCircle2, Cloud, Code2, Edit3, FolderKanban, KeyRound, LogOut, Mail, Moon, RefreshCw, ShieldCheck, ShieldOff, Sun } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import PageHeader from '../components/PageHeader.vue'
 import WorkspaceModuleState from '../components/WorkspaceModuleState.vue'
@@ -9,6 +9,7 @@ import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useConfirmationStore } from '../stores/confirmation'
+import { useNotificationStore } from '../stores/notifications'
 import type { ProfileDraft } from '../types'
 
 const router = useRouter()
@@ -16,6 +17,7 @@ const auth = useAuthStore()
 const theme = useThemeStore()
 const workspace = useWorkspaceStore()
 const confirmation = useConfirmationStore()
+const notifications = useNotificationStore()
 const showEditor = ref(false)
 const draft = reactive<ProfileDraft>({ name: '', role: '', bio: '', avatarUrl: null })
 const displayName = computed(() => workspace.profile?.name || auth.workspaceUser?.displayName || '开发者')
@@ -50,6 +52,22 @@ async function logout() {
   auth.clear()
   workspace.clear()
   router.replace('/login')
+}
+
+async function logoutAll() {
+  if (auth.workspaceMember || !await confirmation.ask({
+    title: '退出所有登录设备？',
+    message: '你的全部登录令牌会立即失效，包括当前浏览器和其他设备。',
+    detail: '本机尚未提交到云端的草稿仍会保留。完成后需要重新登录。',
+    confirmText: '全部退出', cancelText: '取消', tone: 'warning', icon: 'logout',
+  })) return
+  if (!await auth.logoutAll()) {
+    notifications.notify(auth.error || '登录会话注销失败，请稍后重试。', { type: 'error' })
+    return
+  }
+  workspace.clear()
+  await router.replace('/login')
+  notifications.notify('所有设备的登录会话均已注销。', { type: 'success' })
 }
 </script>
 
@@ -106,6 +124,7 @@ async function logout() {
       <div><span class="setting-icon"><ShieldCheck :size="19" /></span><span><strong>账户与隐私</strong><small>登录令牌仅保存在当前浏览器，本项目不会保存你的密码。</small></span></div>
       <div class="account-actions">
         <button v-if="!auth.workspaceMember" class="password-button" type="button" @click="router.push({ name: 'change-password' })"><KeyRound :size="16" />修改密码</button>
+        <button v-if="!auth.workspaceMember" class="session-button" type="button" :disabled="auth.busy" @click="logoutAll"><ShieldOff :size="16" />退出全部设备</button>
         <button class="logout-button" type="button" @click="logout"><LogOut :size="16" />{{ auth.workspaceMember ? '结束模拟登录' : '退出登录' }}</button>
       </div>
     </section>
@@ -171,8 +190,10 @@ async function logout() {
 .settings-panel strong { font-size: var(--font-sm); }
 .settings-panel small { margin-top: 5px; color: var(--muted); font-size: var(--font-2xs); }
 .account-actions { display: flex; align-items: center; gap: 8px; }
-.password-button, .logout-button { display: flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 8px; cursor: pointer; font-size: var(--font-xs); }
+.password-button, .session-button, .logout-button { display: flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 8px; cursor: pointer; font-size: var(--font-xs); }
 .password-button { color: var(--accent); border: 1px solid var(--accent-border); background: var(--accent-bg); }
+.session-button { color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 24%, var(--border)); background: color-mix(in srgb, var(--warning) 7%, transparent); }
+.session-button:disabled { opacity: .55; cursor: wait; }
 .logout-button { color: var(--danger); border: 1px solid rgba(229,140,140,.2); background: rgba(229,140,140,.05); }
 @media (max-width: 1220px) { .profile-account { display: none; } .profile-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) {

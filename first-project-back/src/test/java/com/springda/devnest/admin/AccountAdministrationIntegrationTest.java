@@ -55,6 +55,7 @@ class AccountAdministrationIntegrationTest {
     @Autowired ProfileRepository profiles;
     @Autowired TaskRepository tasks;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired AdminAuditEventRepository auditEvents;
     @Autowired com.springda.devnest.image.MarkdownImageRepository images;
     @MockitoBean ImageStorage imageStorage;
     private MockMvc mvc;
@@ -196,6 +197,59 @@ class AccountAdministrationIntegrationTest {
                         .content("{\"email\":\"friend@example.com\",\"password\":\"friend-password\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("邮箱或密码错误"));
+    }
+
+    @Test
+    void userCanRevokeEveryIssuedSessionImmediately() throws Exception {
+        var existingSession = appJwt(user);
+
+        mvc.perform(post("/api/v1/auth/logout-all").with(existingSession))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("Cache-Control", "no-store"));
+
+        mvc.perform(get("/api/v1/tasks").with(existingSession))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("SESSION_REVOKED"));
+    }
+
+    @Test
+    void authenticationAndAccountDirectoryResponsesCannotBeCached() throws Exception {
+        mvc.perform(get("/api/v1/auth/me").with(appJwt(user)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"));
+        mvc.perform(get("/api/v1/admin/accounts").with(appJwt(admin)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"));
+    }
+
+    @Test
+    void administratorAccountAndDelegatedWritesAppearInTheAuditTrail() throws Exception {
+        mvc.perform(post("/api/v1/tasks").with(appJwt(admin)).header("X-Workspace-Owner", user.getId())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"Audited task\",\"sortOrder\":0}"))
+                .andExpect(status().isCreated());
+        mvc.perform(patch("/api/v1/admin/accounts/{id}/status", user.getId()).with(appJwt(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}"))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/admin/audit-events?limit=20").with(appJwt(admin)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$[0].action").value("ACCOUNT_DISABLED"))
+                .andExpect(jsonPath("$[0].targetLabel").value("friend@example.com"))
+                .andExpect(jsonPath("$[1].action").value("MEMBER_WORKSPACE_WRITE"))
+                .andExpect(jsonPath("$[1].resourceType").value("tasks"))
+                .andExpect(jsonPath("$[1].httpMethod").value("POST"))
+                .andExpect(jsonPath("$[1].success").value(true));
+        assertThat(auditEvents.count()).isEqualTo(2);
+    }
+
+    @Test
+    void profileRejectsUnsafeAvatarSchemesEvenWhenTheApiIsCalledDirectly() throws Exception {
+        mvc.perform(put("/api/v1/profile").with(appJwt(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Friend\",\"role\":\"Developer\",\"bio\":\"Hello\",\"avatarUrl\":\"javascript:alert(1)\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("头像链接必须是有效的 HTTP 或 HTTPS 地址"));
     }
 
     @Test

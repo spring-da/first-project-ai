@@ -19,13 +19,27 @@ export class ApiError extends Error {
   }
 }
 
+interface ProblemPayload {
+  detail?: string
+  code?: string
+}
+
+export function writeStoredSession(session: AuthSession): void {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  } catch {
+    throw new ApiError('浏览器无法保存登录状态，请允许本站使用本地存储后重试', undefined, 'SESSION_STORAGE_UNAVAILABLE')
+  }
+}
+
 export function readStoredSession(): AuthSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return null
     const session = JSON.parse(raw) as AuthSession
-    if (!session.accessToken || !session.user) throw new Error('invalid session')
-    if (session.expiresAt && session.expiresAt <= Date.now()) {
+    if (!session.accessToken || session.tokenType !== 'Bearer' || !session.user?.id || !session.user?.email
+      || !Number.isFinite(session.expiresAt)) throw new Error('invalid session')
+    if (session.expiresAt <= Date.now()) {
       localStorage.removeItem(SESSION_KEY)
       return null
     }
@@ -40,6 +54,17 @@ export function readStoredSession(): AuthSession | null {
   } catch {
     try { localStorage.removeItem(SESSION_KEY) } catch { /* Storage may be disabled. */ }
     return null
+  }
+}
+
+async function readJsonPayload(response: Response): Promise<ProblemPayload | unknown | null> {
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('json')) return null
+  try {
+    return await response.json()
+  } catch {
+    if (!response.ok) return null
+    throw new ApiError('服务器返回了无法识别的数据，请稍后重试', response.status, 'INVALID_RESPONSE')
   }
 }
 
@@ -89,8 +114,7 @@ export async function apiRequest<T>(
     context?.signal.throwIfAborted()
     if (response.status === 204) return undefined as T
 
-    const contentType = response.headers.get('content-type') ?? ''
-    const payload = contentType.includes('json') ? await response.json() : null
+    const payload = await readJsonPayload(response) as ProblemPayload | null
     context?.signal.throwIfAborted()
     if (!response.ok) {
       const message = payload?.detail || (response.status === 401 && options.authenticated === false ? '邮箱或密码不正确，请重试。' : `请求失败（${response.status}）`)
@@ -130,7 +154,7 @@ export async function apiDownload(
   if (context?.ownerId) headers.set(WORKSPACE_OWNER_HEADER, context.ownerId)
   let releaseRequest = () => {}
   if (!headers.has('Accept')) headers.set('Accept', 'application/zip, text/markdown, application/octet-stream, application/problem+json, application/json')
-  if (options.body) headers.set('Content-Type', 'application/json')
+  if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
 
   try {
     if (options.authenticated !== false) {
@@ -146,8 +170,7 @@ export async function apiDownload(
     })
     context?.signal.throwIfAborted()
     if (!response.ok) {
-      const contentType = response.headers.get('content-type') ?? ''
-      const payload = contentType.includes('json') ? await response.json() : null
+      const payload = await readJsonPayload(response) as ProblemPayload | null
       context?.signal.throwIfAborted()
       handleAuthError(response.status, payload?.code, options.authenticated !== false)
       throw new ApiError(payload?.detail || `下载失败（${response.status}）`, response.status, payload?.code)

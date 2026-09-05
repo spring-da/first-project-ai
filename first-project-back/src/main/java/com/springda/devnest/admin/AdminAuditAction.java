@@ -1,0 +1,12 @@
+package com.springda.devnest.admin;
+
+public enum AdminAuditAction {
+    INVITATION_CREATED,
+    INVITATION_ROTATED,
+    INVITATION_REVOKED,
+    ACCOUNT_ENABLED,
+    ACCOUNT_DISABLED,
+    ACCOUNT_PASSWORD_RESET,
+    ACCOUNT_DELETED,
+    MEMBER_WORKSPACE_WRITE
+}

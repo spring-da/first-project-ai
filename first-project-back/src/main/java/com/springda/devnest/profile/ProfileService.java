@@ -1,8 +1,13 @@
 package com.springda.devnest.profile;
 
+import com.springda.devnest.common.BadRequestException;
 import com.springda.devnest.common.NotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Locale;
 
 @Service
 public class ProfileService {
@@ -25,7 +30,7 @@ public class ProfileService {
                 request.name().trim(),
                 request.role().trim(),
                 request.bio().trim(),
-                normalizeNullable(request.avatarUrl()));
+                normalizeAvatarUrl(request.avatarUrl()));
         return ProfileDtos.Response.from(profiles.save(profile));
     }
 
@@ -34,7 +39,23 @@ public class ProfileService {
                 .orElseThrow(() -> new NotFoundException("开发者资料", ownerId));
     }
 
-    private String normalizeNullable(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+    private String normalizeAvatarUrl(String value) {
+        if (value == null || value.isBlank()) return null;
+        var normalized = value.trim();
+        try {
+            var uri = new URI(normalized);
+            var scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            if (!(scheme.equals("http") || scheme.equals("https"))
+                    || uri.getHost() == null || uri.getUserInfo() != null) {
+                throw invalidAvatarUrl();
+            }
+            return uri.toASCIIString();
+        } catch (URISyntaxException exception) {
+            throw invalidAvatarUrl();
+        }
+    }
+
+    private BadRequestException invalidAvatarUrl() {
+        return new BadRequestException("头像链接必须是有效的 HTTP 或 HTTPS 地址");
     }
 }

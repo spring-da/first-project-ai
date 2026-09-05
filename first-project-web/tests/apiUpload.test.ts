@@ -4,7 +4,12 @@ import { apiDownload, apiRequest } from '../src/services/api.ts'
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout, clearTimeout } })
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: () => JSON.stringify({ accessToken: 'fake', tokenType: 'Bearer', user: { id: 'test' } }) } })
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    getItem: () => JSON.stringify({
+      accessToken: 'fake', tokenType: 'Bearer', expiresAt: Date.now() + 60_000,
+      user: { id: 'test', email: 'test@example.com' },
+    }),
+  } })
 })
 afterEach(() => { Reflect.deleteProperty(globalThis, 'window'); Reflect.deleteProperty(globalThis, 'localStorage') })
 

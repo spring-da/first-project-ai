@@ -3,10 +3,11 @@ package com.springda.devnest.auth;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -24,29 +25,38 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    @ResponseStatus(HttpStatus.CREATED)
-    AuthDtos.AuthResponse register(@Valid @RequestBody AuthDtos.RegisterRequest request) {
-        return authService.register(request);
+    ResponseEntity<AuthDtos.AuthResponse> register(@Valid @RequestBody AuthDtos.RegisterRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
+                .body(authService.register(request));
     }
 
     @PostMapping("/login")
-    AuthDtos.AuthResponse login(
+    ResponseEntity<AuthDtos.AuthResponse> login(
             @Valid @RequestBody AuthDtos.LoginRequest request,
             HttpServletRequest httpRequest
     ) {
-        return authService.login(request, httpRequest.getRemoteAddr());
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(authService.login(request, httpRequest.getRemoteAddr()));
     }
 
     @GetMapping("/me")
-    AuthDtos.UserSummary currentUser(@AuthenticationPrincipal Jwt jwt) {
-        return authService.currentUser(jwt.getSubject());
+    ResponseEntity<AuthDtos.UserSummary> currentUser(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(authService.currentUser(jwt.getSubject()));
     }
 
     @PutMapping("/password")
-    AuthDtos.AuthResponse changePassword(
+    ResponseEntity<AuthDtos.AuthResponse> changePassword(
             @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody AuthDtos.ChangePasswordRequest request
     ) {
-        return authService.changePassword(jwt.getSubject(), request);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(authService.changePassword(jwt.getSubject(), request));
+    }
+
+    @PostMapping("/logout-all")
+    ResponseEntity<Void> logoutAll(@AuthenticationPrincipal Jwt jwt) {
+        authService.logoutAll(jwt.getSubject());
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 }

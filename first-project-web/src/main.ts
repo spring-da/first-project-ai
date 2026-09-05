@@ -7,6 +7,7 @@ import { router } from './router'
 import { useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
 import { useWorkspaceStore } from './stores/workspace'
+import { SESSION_KEY } from './services/api'
 import { installWheelScrollChaining } from './utils/scrollChaining'
 
 const app = createApp(App)
@@ -22,11 +23,18 @@ const auth = useAuthStore(pinia)
 useThemeStore(pinia).initialize()
 installAuthGuards(router, pinia)
 
-window.addEventListener('devnest:unauthorized', () => {
+function returnToLogin() {
   auth.clear()
   useWorkspaceStore(pinia).clear()
-  router.push({ name: 'login' })
-})
+  void router.push({ name: 'login' })
+}
+
+window.addEventListener('devnest:unauthorized', returnToLogin)
+const syncLogoutAcrossTabs = (event: StorageEvent) => {
+  if (event.key === SESSION_KEY && event.newValue === null && auth.isAuthenticated) returnToLogin()
+}
+window.addEventListener('storage', syncLogoutAcrossTabs)
+if (import.meta.hot) import.meta.hot.dispose(() => window.removeEventListener('storage', syncLogoutAcrossTabs))
 
 window.addEventListener('devnest:password-change-required', () => {
   auth.setWorkspaceMember(null)

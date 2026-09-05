@@ -48,6 +48,24 @@ export interface TemporaryPasswordSecret {
   expiresAt: string
 }
 
+export type AdminAuditAction = 'INVITATION_CREATED' | 'INVITATION_ROTATED' | 'INVITATION_REVOKED'
+  | 'ACCOUNT_ENABLED' | 'ACCOUNT_DISABLED' | 'ACCOUNT_PASSWORD_RESET' | 'ACCOUNT_DELETED'
+  | 'MEMBER_WORKSPACE_WRITE'
+
+export interface AdminAuditEvent {
+  id: string
+  actorEmail: string
+  targetId: string | null
+  targetLabel: string | null
+  action: AdminAuditAction
+  resourceType: string
+  httpMethod: string
+  requestPath: string
+  responseStatus: number
+  success: boolean
+  createdAt: string
+}
+
 export interface AdminWorkspaceAccount {
   id: string
   email: string

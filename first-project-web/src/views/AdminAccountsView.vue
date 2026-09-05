@@ -7,6 +7,7 @@ import {
   Clock3,
   Copy,
   Eye,
+  History,
   KeyRound,
   Link2,
   LoaderCircle,
@@ -35,6 +36,7 @@ const notifications = useNotificationStore()
 const inviteEmail = ref('')
 const search = ref('')
 const filter = ref<'all' | 'registered' | 'pending' | 'disabled'>('all')
+const auditExpanded = ref(false)
 const oneTimeSecret = ref<{
   kind: '邀请链接' | '临时密码'
   subject: string
@@ -56,6 +58,24 @@ const visibleAccounts = computed(() => {
       || account.displayName?.toLowerCase().includes(term))
   })
 })
+const visibleAuditEvents = computed(() => auditExpanded.value ? admin.auditEvents : admin.auditEvents.slice(0, 8))
+
+const auditActionLabels = {
+  INVITATION_CREATED: '创建注册邀请',
+  INVITATION_ROTATED: '更新邀请链接',
+  INVITATION_REVOKED: '撤销注册资格',
+  ACCOUNT_ENABLED: '启用成员账户',
+  ACCOUNT_DISABLED: '禁用成员账户',
+  ACCOUNT_PASSWORD_RESET: '重置成员密码',
+  ACCOUNT_DELETED: '永久删除成员',
+  MEMBER_WORKSPACE_WRITE: '维护成员数据',
+} as const
+
+const resourceLabels: Record<string, string> = {
+  tasks: '任务', projects: '项目', domains: '知识目录', 'knowledge-items': '知识条目',
+  'markdown-documents': 'Markdown 文章', 'markdown-images': '文章图片', snippets: '代码片段',
+  logs: '开发日志', profile: '个人资料', invitations: '注册邀请', accounts: '账户',
+}
 
 
 function formatDate(value: string | null) {
@@ -64,12 +84,31 @@ function formatDate(value: string | null) {
 }
 
 async function load(showSuccess = false) {
-  try {
-    await admin.load()
-    if (showSuccess) notifications.notify('人员名单已刷新。', { type: 'success' })
-  } catch {
-    notifications.notify(admin.error, { type: 'error' })
+  const [accountsResult, auditResult] = await Promise.allSettled([admin.load(), admin.loadAudit()])
+  if (accountsResult.status === 'rejected') notifications.notify(admin.error, { type: 'error' })
+  if (auditResult.status === 'rejected') notifications.notify(admin.auditError, { type: 'warning' })
+  if (showSuccess && accountsResult.status === 'fulfilled' && auditResult.status === 'fulfilled') {
+    notifications.notify('人员名单和操作记录已刷新。', { type: 'success' })
   }
+}
+
+function refreshAudit() {
+  void admin.loadAudit().catch(() => undefined)
+}
+
+async function refreshAuditFromButton() {
+  try {
+    await admin.loadAudit()
+    notifications.notify('管理员操作记录已刷新。', { type: 'success' })
+  } catch {
+    notifications.notify(admin.auditError, { type: 'error' })
+  }
+}
+
+function auditTitle(action: keyof typeof auditActionLabels, resourceType: string, method: string) {
+  if (action !== 'MEMBER_WORKSPACE_WRITE') return auditActionLabels[action]
+  const operation = method === 'POST' ? '新增/执行' : method === 'DELETE' ? '删除' : '修改'
+  return `${operation}${resourceLabels[resourceType] || '工作区数据'}`
 }
 
 async function invite() {
@@ -84,6 +123,7 @@ async function invite() {
       expiresAt: result.expiresAt,
     }
     notifications.notify(`已生成 ${result.account.email} 的一次性邀请链接。`, { type: 'success' })
+    refreshAudit()
   } catch {
     notifications.notify(admin.error, { type: 'error' })
   }
@@ -138,6 +178,7 @@ async function rotateInvitation(account: AdminAccount) {
       expiresAt: result.expiresAt,
     }
     notifications.notify('新的邀请链接已生成，旧链接已失效。', { type: 'success' })
+    refreshAudit()
   } catch {
     notifications.notify(admin.error, { type: 'error' })
   }
@@ -154,6 +195,7 @@ async function revoke(account: AdminAccount) {
   try {
     await admin.revokeInvitation(account.invitationId)
     notifications.notify(`已撤销 ${account.email} 的注册资格。`, { type: 'success' })
+    refreshAudit()
   } catch {
     notifications.notify(admin.error, { type: 'error' })
   }
@@ -174,6 +216,7 @@ async function toggleEnabled(account: AdminAccount) {
   try {
     await admin.setEnabled(account.userId, nextEnabled)
     notifications.notify(`账户已${nextEnabled ? '启用' : '禁用'}。`, { type: 'success' })
+    refreshAudit()
   } catch {
     notifications.notify(admin.error, { type: 'error' })
   }
@@ -197,6 +240,7 @@ async function resetPassword(account: AdminAccount) {
       expiresAt: result.expiresAt,
     }
     notifications.notify('随机临时密码已生成，请立即通过安全渠道告知用户。', { type: 'success' })
+    refreshAudit()
   } catch {
     notifications.notify(admin.error, { type: 'error' })
   }
@@ -214,6 +258,7 @@ async function deleteAccount(account: AdminAccount) {
   try {
     await admin.deleteAccount(account.userId)
     notifications.notify(`已永久删除 ${account.email}。`, { type: 'success' })
+    refreshAudit()
   } catch {
     notifications.notify(admin.error, { type: 'error' })
   }
@@ -286,6 +331,25 @@ onMounted(() => load())
       </TransitionGroup>
     </section>
 
+    <section class="audit-panel">
+      <header>
+        <div><p class="eyebrow">ADMIN AUDIT TRAIL</p><h2>管理员操作记录</h2><span>保留账号管理与代管成员数据的结果，不保存敏感正文或一次性密钥。</span></div>
+        <button class="button button-ghost" type="button" :disabled="admin.auditLoading" @click="refreshAuditFromButton"><RefreshCw :size="15" :class="{ spin: admin.auditLoading }" />刷新记录</button>
+      </header>
+      <div v-if="admin.auditLoading && !admin.auditEvents.length" class="audit-state"><LoaderCircle class="spin" :size="20" />正在读取操作记录…</div>
+      <div v-else-if="admin.auditError && !admin.auditEvents.length" class="audit-state">{{ admin.auditError }}</div>
+      <div v-else-if="!admin.auditEvents.length" class="audit-state"><History :size="19" />尚无管理员操作记录。</div>
+      <div v-else class="audit-list">
+        <article v-for="event in visibleAuditEvents" :key="event.id" :title="event.requestPath">
+          <span class="audit-result" :class="{ failed: !event.success }"><CheckCircle2 v-if="event.success" :size="16" /><Ban v-else :size="16" /></span>
+          <div><strong>{{ auditTitle(event.action, event.resourceType, event.httpMethod) }}</strong><span>{{ event.actorEmail }} → {{ event.targetLabel || event.targetId || '系统' }}</span></div>
+          <small>{{ event.success ? '成功' : `失败 · HTTP ${event.responseStatus}` }}</small>
+          <time :datetime="event.createdAt">{{ formatDate(event.createdAt) }}</time>
+        </article>
+        <button v-if="admin.auditEvents.length > 8" class="audit-more" type="button" @click="auditExpanded = !auditExpanded">{{ auditExpanded ? '收起记录' : `查看全部 ${admin.auditEvents.length} 条记录` }}</button>
+      </div>
+    </section>
+
     <AppModal
       v-if="oneTimeSecret"
       :title="`${oneTimeSecret.kind}已生成`"
@@ -355,6 +419,24 @@ onMounted(() => load())
 .icon-action:hover { border-color: color-mix(in srgb, var(--danger) 25%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, transparent); }
 .current-account { padding: 6px 9px; color: var(--muted); border: 1px solid var(--border); border-radius: 99px; font-size: var(--font-2xs); }
 .account-state { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--muted); font-size: var(--font-sm); }
+.audit-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 15px; overflow: hidden; background: var(--panel); }
+.audit-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 21px 22px; border-bottom: 1px solid var(--border); }
+.audit-panel h2 { margin: 0; font-size: var(--font-lg); }
+.audit-panel header span { display: block; margin-top: 6px; color: var(--muted); font-size: var(--font-xs); }
+.audit-state { min-height: 112px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: var(--font-sm); }
+.audit-list { padding: 4px 14px; }
+.audit-list article { min-height: 65px; display: grid; grid-template-columns: 32px minmax(260px, 1fr) 110px 155px; align-items: center; gap: 12px; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+.audit-result { width: 30px; height: 30px; display: grid; place-items: center; color: var(--success); border-radius: 8px; background: color-mix(in srgb, var(--success) 10%, transparent); }
+.audit-result.failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, transparent); }
+.audit-list article div { min-width: 0; }
+.audit-list article strong, .audit-list article span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-list article strong { font-size: var(--font-xs); }
+.audit-list article div span, .audit-list article small, .audit-list article time { color: var(--muted); font-size: var(--font-2xs); }
+.audit-list article div span { margin-top: 4px; }
+.audit-list article small { text-align: right; }
+.audit-list article time { text-align: right; white-space: nowrap; }
+.audit-more { width: 100%; padding: 11px; color: var(--accent); border: 0; background: transparent; cursor: pointer; font-size: var(--font-xs); }
+.audit-more:hover { background: var(--accent-bg); }
 .secret-summary { display: flex; align-items: center; gap: 11px; padding: 13px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-bg); }
 .secret-summary div { min-width: 0; }
 .secret-summary strong, .secret-summary span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -365,87 +447,7 @@ onMounted(() => load())
 .secret-warning { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0 0; color: var(--warning); font-size: var(--font-xs); line-height: 1.55; }
 .secret-warning svg { flex-shrink: 0; }
 .secret-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
-.workspace-loading { min-height: 260px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--muted); }
-.workspace-browser { height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.workspace-browser__summary { flex: 0 0 auto; }
-.workspace-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
-.workspace-metrics div { min-width: 0; padding: 13px 9px; text-align: center; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-sunken); }
-.workspace-metrics strong, .workspace-metrics span { display: block; }
-.workspace-metrics strong { font-size: var(--font-lg); }
-.workspace-metrics span { margin-top: 3px; color: var(--muted); font-size: var(--font-2xs); }
-.workspace-tabs { display: flex; gap: 4px; margin: 0 0 10px; padding: 4px; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-sunken); }
-.workspace-metrics + .workspace-tabs { margin-top: 10px; }
-.workspace-tabs button { flex: 1; min-width: max-content; padding: 8px 10px; color: var(--muted); border: 0; border-radius: 7px; background: transparent; cursor: pointer; transition: color var(--motion-fast), background var(--motion-fast), box-shadow var(--motion-base), transform var(--motion-fast); }
-.workspace-tabs button:active { transform: scale(.97); }
-.workspace-tabs button.active { color: var(--accent); background: var(--panel); box-shadow: var(--shadow-sm); }
-.workspace-browser__toolbar { min-height: 41px; display: flex; align-items: center; gap: 10px; flex: 0 0 auto; margin-bottom: 10px; }
-.workspace-browser__toolbar > label { width: min(520px, 48%); height: 39px; display: flex; align-items: center; gap: 8px; padding: 0 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 9px; background: var(--surface-sunken); }
-.workspace-browser__toolbar input { min-width: 0; width: 100%; color: var(--text); border: 0; outline: 0; background: transparent; font-size: var(--font-xs); }
-.workspace-browser__toolbar > label:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.workspace-browser__toolbar > span { margin-left: auto; color: var(--muted); font-size: var(--font-2xs); white-space: nowrap; }
-.workspace-type-filter { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-sunken); }
-.workspace-type-filter button { padding: 6px 10px; color: var(--muted); border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-size: var(--font-2xs); }
-.workspace-type-filter button.active { color: var(--accent); background: var(--panel); box-shadow: var(--shadow-sm); }
-.workspace-browser__content { min-height: 0; flex: 1; overflow: hidden; }
-.workspace-browser__content > .workspace-section { height: 100%; overflow: auto; padding-right: 3px; }
-.workspace-section h3 { margin: 16px 0 10px; font-size: var(--font-md); }
-.profile-card { display: flex; gap: 13px; padding: 16px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 12px; background: var(--accent-bg); }
-.profile-card strong, .profile-card span { display: block; }
-.profile-card span { margin-top: 3px; color: var(--subtle); font-size: var(--font-xs); }
-.profile-card p { margin: 9px 0 0; color: var(--muted); line-height: 1.6; }
-.workspace-rows { border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
-.workspace-rows > div, .workspace-rows > button { width: 100%; min-height: 50px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 13px; color: var(--text); text-align: left; border: 0; border-bottom: 1px solid var(--border); background: var(--panel); }
-.workspace-rows > :last-child { border-bottom: 0; }
-.workspace-rows small { color: var(--muted); white-space: nowrap; }
-.workspace-rows .done { color: var(--muted); text-decoration: line-through; }
-.document-rows button { cursor: pointer; }
-.document-rows button:hover { color: var(--accent); background: var(--accent-bg); }
-.document-rows button span { display: flex; align-items: center; gap: 7px; }
-.workspace-cards { display: grid; gap: 10px; }
-.project-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.log-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.workspace-cards article { min-width: 0; padding: 15px; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); }
-.workspace-cards header { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
-.workspace-cards header span { color: var(--accent); font-size: var(--font-2xs); }
-.workspace-cards p { margin: 9px 0; color: var(--subtle); line-height: 1.55; }
-.workspace-cards small { color: var(--muted); }
-.workspace-cards pre { max-height: 260px; overflow: auto; margin: 10px 0; padding: 12px; border-radius: 8px; background: var(--surface-sunken); }
-.workspace-cards code { font-size: 12px; white-space: pre; }
-.workspace-empty { padding: 26px; color: var(--muted); text-align: center; border: 1px dashed var(--border); border-radius: 10px; }
-.preserve-lines { white-space: pre-wrap; }
-.workspace-knowledge { height: 100%; min-height: 0; display: grid; grid-template-columns: minmax(300px, 30%) minmax(0, 1fr); overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-sunken); }
-.workspace-knowledge__list { min-height: 0; overflow: auto; padding: 8px; border-right: 1px solid var(--border); }
-.workspace-knowledge__list > button { width: 100%; min-height: 67px; display: grid; grid-template-columns: 34px minmax(0, 1fr) 18px; align-items: center; gap: 10px; margin-bottom: 4px; padding: 9px; color: var(--muted); text-align: left; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; }
-.workspace-knowledge__list > button:hover { color: var(--text); background: var(--panel); }
-.workspace-knowledge__list > button.active { color: var(--accent); border-color: var(--accent-border); background: var(--accent-bg); }
-.workspace-item-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; }
-.workspace-item-icon.documents { color: var(--accent); background: var(--accent-bg); }
-.workspace-item-icon.snippets { color: var(--violet); background: color-mix(in srgb, var(--violet) 10%, transparent); }
-.workspace-knowledge__list > button > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
-.workspace-knowledge__list strong, .workspace-knowledge__list small, .workspace-knowledge__list em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.workspace-knowledge__list strong { color: var(--text); font-size: var(--font-xs); }
-.workspace-knowledge__list small { font-size: 10px; }
-.workspace-knowledge__list em { color: var(--muted); font-size: 9px; font-style: normal; }
-.workspace-reader { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
-.workspace-reader > header { flex: 0 0 auto; padding: 14px 20px 12px; border-bottom: 1px solid var(--border); }
-.workspace-reader > header > span, .workspace-reader > header > small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--font-2xs); }
-.workspace-reader > header > span { color: var(--accent); font-weight: 700; }
-.workspace-reader > header h3 { margin: 5px 0 6px; font-size: var(--font-lg); }
-.workspace-reader__body { min-height: 0; flex: 1; overflow: auto; padding: 8px 24px 24px; }
-.workspace-reader__body :deep(.markdown-body) { max-width: 1180px; margin: 0 auto; font-size: 15px; line-height: 1.8; }
-.workspace-code-reader { min-height: 0; flex: 1; overflow: auto; margin: 0; padding: 18px 22px; background: var(--surface-sunken); }
-.workspace-code-reader code { font: 13px/1.75 "Cascadia Code", Consolas, monospace; white-space: pre; }
-.workspace-reader__empty { height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 9px; color: var(--muted); text-align: center; }
-.workspace-reader__empty svg { color: var(--accent); opacity: .65; }
-.workspace-reader__empty strong { color: var(--text); }
-.workspace-reader__empty span { max-width: 360px; font-size: var(--font-xs); }
-.workspace-pagination { min-height: 40px; display: flex; align-items: flex-end; justify-content: space-between; flex: 0 0 auto; padding-top: 8px; color: var(--muted); font-size: var(--font-2xs); }
-.workspace-pagination div { display: flex; gap: 5px; }
-.workspace-pagination button { width: 32px; height: 30px; display: grid; place-items: center; color: var(--muted); border: 1px solid var(--border); border-radius: 7px; background: var(--panel); cursor: pointer; }
-.workspace-pagination button:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-border); background: var(--accent-bg); }
-.workspace-pagination button:disabled { opacity: .35; cursor: not-allowed; }
 @media (min-width: 1800px) { .admin-overview { grid-template-columns: repeat(3, minmax(200px, .75fr)) minmax(420px, 1.5fr); gap: 16px; } .invite-panel, .accounts-panel > header { padding-inline: 28px; } .account-list { padding-inline: 20px; } .account-row { grid-template-columns: 43px minmax(300px, 1.25fr) minmax(220px, .65fr) minmax(340px, auto); column-gap: 20px; } }
 @media (max-width: 1100px) { .admin-overview { grid-template-columns: repeat(3, 1fr); } .admin-overview > p { grid-column: 1 / -1; min-height: auto; } .accounts-panel > header { align-items: stretch; flex-direction: column; } .account-tools { justify-content: space-between; } .account-row { grid-template-columns: 43px 1fr auto; } .account-status { justify-content: flex-end; } .account-actions { grid-column: 2 / -1; justify-content: flex-start; } }
 @media (max-width: 720px) { .admin-overview { grid-template-columns: repeat(3, 1fr); gap: 7px; } .admin-overview > div { min-width: 0; min-height: 105px; padding: 13px 10px; } .admin-overview > div small { font-size: 10px; } .admin-overview > p { grid-column: 1 / -1; padding: 14px; } .invite-panel { align-items: stretch; flex-direction: column; gap: 17px; padding: 19px; } .invite-panel form { width: 100%; grid-template-columns: 1fr; } .account-tools { align-items: stretch; flex-direction: column; } .account-search { width: 100%; } .filters { display: grid; grid-template-columns: repeat(4, 1fr); } .filters button { padding-inline: 3px; } .accounts-panel > header { padding: 18px; } .account-list { padding-inline: 10px; } .account-row { grid-template-columns: 39px minmax(0, 1fr); gap: 10px; padding-block: 15px; } .account-status, .account-actions { grid-column: 2; justify-content: flex-start; } .account-actions { flex-wrap: wrap; } .secret-actions { align-items: stretch; flex-direction: column; } .secret-actions .button { justify-content: center; } }
-@media (max-width: 720px) { .workspace-metrics { grid-template-columns: repeat(3, 1fr); } .workspace-rows > div, .workspace-rows > button { align-items: flex-start; flex-direction: column; gap: 4px; } }
 </style>

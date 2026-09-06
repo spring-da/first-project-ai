@@ -249,7 +249,7 @@ function formatDueAt(value: string) {
 .dashboard-grid > .panel { display: flex; flex-direction: column; height: var(--dashboard-panel-height); min-height: 0; min-width: 0; overflow: hidden; }
 .panel-heading { flex-shrink: 0; gap: 12px; }
 .panel-heading .text-link { flex-shrink: 0; }
-.dashboard-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; margin-top: 12px; overscroll-behavior-y: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.dashboard-scroll { flex: 1; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; margin-top: 12px; overscroll-behavior-y: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 .dashboard-scroll:focus-visible { outline-offset: -2px; border-radius: 8px; }
 .dashboard-scroll > .panel-empty { min-height: 100%; }
 .task-view-tabs { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 0; margin-top: 14px; padding-bottom: 3px; scrollbar-width: thin; }
@@ -289,6 +289,18 @@ function formatDueAt(value: string) {
 @media (hover: none) { .task-actions { opacity: .85; transform: none; } }
 @media (max-width: 1200px) { .knowledge-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1700px) { .knowledge-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 1041px) {
+  .metric-grid { margin-top: 24px; }
+  .metric-card { min-height: 140px; padding: 12px 14px; }
+  .metric-card-heading { margin-bottom: 6px; }
+  .metric-card-heading .metric-icon { width: 28px; height: 28px; border-radius: 8px; }
+  .metric-card > span,
+  .metric-card .metric-top { line-height: 20px; }
+  .metric-card > strong { margin-top: 4px; font-size: 22px; line-height: 1.2; }
+  .metric-card > p { margin-top: 2px; line-height: 1.35; }
+  .metric-card .progress { margin-top: 6px; }
+  .dashboard-grid { --dashboard-panel-height: clamp(500px, calc(100svh - 520px), 620px); }
+}
 @media (max-width: 1320px) { .dashboard-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) {
   .dashboard-page { padding-top: 25px; }.dashboard-grid { --dashboard-panel-height: min(590px, 68svh); }.knowledge-strip { padding: 18px; }.knowledge-grid { grid-template-columns: 1fr; }.section-title { align-items: center; }

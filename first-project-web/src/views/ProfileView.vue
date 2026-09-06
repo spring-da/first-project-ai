@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { BookOpen, CheckCircle2, Cloud, Code2, Edit3, FolderKanban, KeyRound, LogOut, Mail, Moon, RefreshCw, ShieldCheck, ShieldOff, Sun } from 'lucide-vue-next'
+import { BookOpen, Camera, CheckCircle2, Cloud, Code2, Edit3, FolderKanban, KeyRound, LoaderCircle, LogOut, Mail, Moon, RefreshCw, ShieldCheck, ShieldOff, Sun, Trash2 } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import PageHeader from '../components/PageHeader.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import WorkspaceModuleState from '../components/WorkspaceModuleState.vue'
 import { useAuthStore } from '../stores/auth'
 import { useThemeStore } from '../stores/theme'
@@ -11,6 +12,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useConfirmationStore } from '../stores/confirmation'
 import { useNotificationStore } from '../stores/notifications'
 import type { ProfileDraft } from '../types'
+import { imageSelectionError, optimizeImageFile } from '../utils/imageOptimization'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -19,9 +21,10 @@ const workspace = useWorkspaceStore()
 const confirmation = useConfirmationStore()
 const notifications = useNotificationStore()
 const showEditor = ref(false)
-const draft = reactive<ProfileDraft>({ name: '', role: '', bio: '', avatarUrl: null })
+const draft = reactive<ProfileDraft>({ name: '', role: '', bio: '', avatarUrl: null, gender: null })
 const displayName = computed(() => workspace.profile?.name || auth.workspaceUser?.displayName || '开发者')
-const initial = computed(() => displayName.value.charAt(0).toUpperCase() || 'D')
+const avatarInput = ref<HTMLInputElement | null>(null)
+const avatarOptimizing = ref(false)
 const syncTime = computed(() => workspace.lastSyncedAt
   ? new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(workspace.lastSyncedAt)
   : '尚未同步')
@@ -31,14 +34,56 @@ function openEditor() {
     name: workspace.profile?.name || auth.workspaceUser?.displayName || '',
     role: workspace.profile?.role || 'Independent Developer',
     bio: workspace.profile?.bio || '持续构建，持续学习。',
-    avatarUrl: workspace.profile?.avatarUrl || null,
+    avatarUrl: /^https?:\/\//iu.test(workspace.profile?.avatarUrl ?? '') ? workspace.profile?.avatarUrl ?? null : null,
+    gender: workspace.profile?.gender ?? null,
   })
   showEditor.value = true
 }
 
 async function saveProfile() {
   await workspace.saveProfile({ ...draft, avatarUrl: draft.avatarUrl?.trim() || null })
+  if (!auth.workspaceMember && auth.session && workspace.profile) {
+    auth.updateUser({ ...auth.session.user, displayName: workspace.profile.name })
+  }
   showEditor.value = false
+}
+
+async function selectAvatar(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  const error = imageSelectionError(file, 5 * 1024 * 1024)
+  if (error) {
+    notifications.notify(error, { type: 'warning' })
+    return
+  }
+  avatarOptimizing.value = true
+  try {
+    const result = await optimizeImageFile(file, { maxDimension: 1024, maxBytes: 5 * 1024 * 1024, quality: .86 })
+    await workspace.uploadProfileAvatar(result.file)
+    draft.avatarUrl = null
+    notifications.notify('头像已更新。', { type: 'success' })
+  } catch (uploadError) {
+    notifications.notify(uploadError instanceof Error ? uploadError.message : '头像上传失败', { type: 'error' })
+  } finally {
+    avatarOptimizing.value = false
+  }
+}
+
+async function clearAvatar() {
+  if (!await confirmation.ask({
+    title: '恢复默认头像？',
+    message: '当前头像将被删除，系统会根据昵称生成新的默认头像。',
+    confirmText: '恢复默认头像', tone: 'warning', icon: 'delete',
+  })) return
+  try {
+    await workspace.clearProfileAvatar()
+    draft.avatarUrl = null
+    notifications.notify('已恢复默认头像。', { type: 'success' })
+  } catch (error) {
+    notifications.notify(error instanceof Error ? error.message : '头像删除失败', { type: 'error' })
+  }
 }
 
 async function logout() {
@@ -79,12 +124,9 @@ async function logoutAll() {
     <WorkspaceModuleState module="profile" title="个人资料" :has-data="Boolean(workspace.profile)" />
 
     <section class="profile-hero">
-      <div class="profile-avatar">
-        <img v-if="workspace.profile?.avatarUrl" :src="workspace.profile.avatarUrl" alt="开发者头像" />
-        <span v-else>{{ initial }}</span>
-      </div>
+      <UserAvatar class="profile-avatar" :name="displayName" :seed="auth.workspaceUser?.id" :url="workspace.profile?.avatarUrl" :size="88" />
       <div class="profile-copy"><p class="eyebrow">SPRINGDA EDITION</p><h2>{{ displayName }}</h2><strong>{{ workspace.profile?.role || 'Independent Developer' }}</strong><p>{{ workspace.profile?.bio || '持续构建，持续学习。' }}</p></div>
-      <div class="profile-account"><span><Mail :size="15" />{{ auth.workspaceUser?.email }}</span><span><ShieldCheck :size="15" />账户已通过 JWT 安全认证</span></div>
+      <div class="profile-account"><span><Mail :size="15" />{{ auth.workspaceUser?.email }}</span><span><ShieldCheck :size="15" />{{ workspace.profile?.gender === 'MALE' ? '男' : workspace.profile?.gender === 'FEMALE' ? '女' : workspace.profile?.gender === 'OTHER' ? '其他' : '性别未设置' }}</span></div>
     </section>
 
     <section class="profile-grid">
@@ -131,10 +173,14 @@ async function logoutAll() {
 
     <AppModal v-if="showEditor" title="编辑开发者资料" description="这些信息会同步到你的所有 DevNest 设备。" @close="showEditor = false">
       <form class="form-grid" @submit.prevent="saveProfile">
+        <div class="avatar-editor">
+          <UserAvatar :name="draft.name || displayName" :seed="auth.workspaceUser?.id" :url="workspace.profile?.avatarUrl" :size="68" />
+          <div><strong>个人头像</strong><small>支持 PNG、JPG、GIF、WebP；上传前会自动压缩，最大 5 MB。</small><span><input ref="avatarInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/gif,image/webp" @change="selectAvatar" /><button class="button button-secondary" type="button" :disabled="avatarOptimizing || workspace.mutating" @click="avatarInput?.click()"><LoaderCircle v-if="avatarOptimizing" class="spin" :size="15" /><Camera v-else :size="15" />{{ avatarOptimizing ? '正在处理…' : '更换头像' }}</button><button v-if="workspace.profile?.avatarUrl" class="avatar-reset" type="button" :disabled="workspace.mutating" @click="clearAvatar"><Trash2 :size="14" />恢复默认</button></span></div>
+        </div>
         <label class="form-field"><span>显示名称</span><input v-model.trim="draft.name" autofocus required maxlength="80" /></label>
+        <label class="form-field"><span>性别（可选）</span><select v-model="draft.gender"><option :value="null">暂不设置</option><option value="MALE">男</option><option value="FEMALE">女</option><option value="OTHER">其他</option></select></label>
         <label class="form-field"><span>职业角色</span><input v-model.trim="draft.role" required maxlength="120" placeholder="Independent Developer" /></label>
         <label class="form-field"><span>个人签名</span><textarea v-model.trim="draft.bio" required maxlength="500" rows="4" placeholder="用一句话描述你的构建方式。"></textarea></label>
-        <label class="form-field"><span>头像链接（可选）</span><input v-model.trim="draft.avatarUrl" type="url" maxlength="500" placeholder="https://example.com/avatar.jpg" /></label>
         <div class="form-actions"><button class="button button-ghost" type="button" @click="showEditor = false">取消</button><button class="button button-primary" type="submit" :disabled="workspace.mutating">保存资料</button></div>
       </form>
     </AppModal>
@@ -143,8 +189,7 @@ async function logoutAll() {
 
 <style scoped>
 .profile-hero { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 23px; padding: 29px; border: 1px solid var(--accent-border); border-radius: 16px; background: var(--surface-accent); }
-.profile-avatar { width: 88px; height: 88px; display: grid; place-items: center; overflow: hidden; color: var(--accent-contrast); border: 3px solid var(--accent-border); border-radius: 22px; background: var(--accent); font-size: 30px; font-weight: 850; }
-.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-avatar { border: 3px solid var(--accent-border); border-radius: 22px; }
 .profile-copy h2 { margin: 0; font-size: 24px; letter-spacing: -.6px; }
 .profile-copy > strong { display: block; margin-top: 7px; color: var(--accent); font-size: var(--font-sm); }
 .profile-copy > p:last-child { max-width: 600px; margin: 10px 0 0; color: var(--muted); font-size: var(--font-sm); line-height: 1.65; }
@@ -195,6 +240,15 @@ async function logoutAll() {
 .session-button { color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 24%, var(--border)); background: color-mix(in srgb, var(--warning) 7%, transparent); }
 .session-button:disabled { opacity: .55; cursor: wait; }
 .logout-button { color: var(--danger); border: 1px solid rgba(229,140,140,.2); background: rgba(229,140,140,.05); }
+.avatar-editor { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 15px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
+.avatar-editor strong, .avatar-editor small { display: block; }
+.avatar-editor strong { font-size: var(--font-sm); }
+.avatar-editor small { margin-top: 4px; color: var(--muted); font-size: var(--font-2xs); line-height: 1.5; }
+.avatar-editor > div > span { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+.avatar-reset { display: inline-flex; align-items: center; gap: 5px; padding: 7px 8px; color: var(--danger); border: 0; border-radius: 7px; background: transparent; cursor: pointer; font-size: var(--font-xs); }
+.avatar-reset:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.avatar-reset:disabled { opacity: .55; cursor: wait; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 1220px) { .profile-account { display: none; } .profile-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) {
   .profile-hero { grid-template-columns: 72px 1fr; gap: 17px; padding: 20px; }

@@ -120,7 +120,7 @@ const adminAuditEvents = [
   { id: 'audit-1', actorEmail: 'fixture@example.invalid', targetId: 'fixture-disabled', targetLabel: 'disabled@example.com', action: 'ACCOUNT_DISABLED', resourceType: 'accounts', httpMethod: 'PATCH', requestPath: '/api/v1/admin/accounts/fixture-disabled/status', responseStatus: 200, success: true, createdAt: new Date(Date.now() - 60000).toISOString() },
 ]
 let fixtureAnnouncements: SystemAnnouncement[] = [
-  { id: 'announcement-2', title: '意见交流区现已开放', content: '欢迎分享使用建议、遇到的问题和下一步希望增加的功能。\n大家可以回复彼此的消息，也可以附带图片说明。', publisherName: '界面回归测试', active: true, read: false, readCount: 8, publishedAt: now },
+  { id: 'announcement-2', title: '意见交流区现已开放', content: '## 本次更新\n\n意见交流现已支持：\n\n- 回复成员消息\n- 粘贴图片并自动优化\n- 点击 [使用说明](https://docs.example.com/devnest) 查看完整文档\n\n> 欢迎分享问题和下一步建议。', publisherName: '界面回归测试', active: true, read: false, readCount: 8, publishedAt: now },
   { id: 'announcement-1', title: '知识库维护完成', content: '文章历史与回收站已经完成一次稳定性更新。', publisherName: '界面回归测试', active: true, read: true, readCount: 17, publishedAt: new Date(Date.now() - 86400000).toISOString() },
 ]
 let communitySequence = 20
@@ -129,28 +129,31 @@ let fixtureMessages: CommunityMessage[] = Array.from({ length: 12 }, (_, index) 
   parentId: null,
   authorId: index % 3 === 0 ? 'ui-fixture' : `fixture-member-${index}`,
   authorName: index % 3 === 0 ? '界面回归测试' : `知识库成员 ${index + 1}`,
+  authorAvatarUrl: null,
   authorRole: index % 3 === 0 ? 'ADMIN' : 'USER',
-  content: index === 0 ? '消息中心的整体体验很清晰，希望后续可以增加消息搜索。' : `这是第 ${index + 1} 条合成意见，用于验证滚动加载和长消息排版。${index % 2 ? '也欢迎大家补充自己的想法。'.repeat(3) : ''}`,
-  imageUrl: index === 1 ? `/api/v1/community/messages/community-${index + 1}/image` : null,
+  content: index === 0 ? '消息中心的整体体验很清晰，使用说明见 https://docs.example.com/devnest，希望后续可以增加消息搜索。' : `这是第 ${index + 1} 条合成意见，用于验证滚动加载和长消息排版。${index % 2 ? '也欢迎大家补充自己的想法。'.repeat(3) : ''}`,
+  imageUrl: index === 1 ? `/community/messages/community-${index + 1}/image` : null,
   replyCount: index === 0 ? 2 : index % 4 === 0 ? 1 : 0,
   viewerCanDelete: fixtureUser.role === 'ADMIN' || index % 3 === 0,
   createdAt: new Date(Date.now() - index * 90000).toISOString(),
 }))
 const fixtureReplies = new Map<string, CommunityMessage[]>([['community-1', [
-  { id: 'reply-1', parentId: 'community-1', authorId: 'fixture-friend', authorName: '朋友账户', authorRole: 'USER', content: '赞同，搜索和未读提醒都很实用。', imageUrl: null, replyCount: 0, viewerCanDelete: fixtureUser.role === 'ADMIN', createdAt: new Date(Date.now() - 40000).toISOString() },
-  { id: 'reply-2', parentId: 'community-1', authorId: 'ui-fixture', authorName: '界面回归测试', authorRole: 'ADMIN', content: '已经记录到后续计划中，感谢建议。', imageUrl: null, replyCount: 0, viewerCanDelete: true, createdAt: now },
+  { id: 'reply-1', parentId: 'community-1', authorId: 'fixture-friend', authorName: '朋友账户', authorAvatarUrl: null, authorRole: 'USER', content: '赞同，搜索和未读提醒都很实用。', imageUrl: null, replyCount: 0, viewerCanDelete: fixtureUser.role === 'ADMIN', createdAt: new Date(Date.now() - 40000).toISOString() },
+  { id: 'reply-2', parentId: 'community-1', authorId: 'ui-fixture', authorName: '界面回归测试', authorAvatarUrl: null, authorRole: 'ADMIN', content: '已经记录到后续计划中，感谢建议。', imageUrl: null, replyCount: 0, viewerCanDelete: true, createdAt: now },
 ]]])
 const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
-const memberData = new Map<string, { tasks: typeof tasks; projects: typeof projects; documents: typeof documents; snippets: typeof snippets; logs: typeof logs; domains: typeof domains; profile: { name: string; role: string; bio: string; avatarUrl: string | null } }>()
+const memberData = new Map<string, { tasks: typeof tasks; projects: typeof projects; documents: typeof documents; snippets: typeof snippets; logs: typeof logs; domains: typeof domains; profile: { name: string; role: string; bio: string; avatarUrl: string | null; gender: null | 'MALE' | 'FEMALE' | 'OTHER' } }>()
 for (const account of adminAccounts.filter((item) => item.userId)) {
   memberData.set(account.userId!, {
     tasks: structuredClone(tasks), projects: structuredClone(projects), documents: structuredClone(documents),
     snippets: structuredClone(snippets), logs: structuredClone(logs), domains: structuredClone(domains),
-    profile: { name: account.displayName!, role: 'Independent Developer', bio: '用代码记录成长，把想法构建成作品。', avatarUrl: null },
+    profile: { name: account.displayName!, role: 'Independent Developer', bio: '用代码记录成长，把想法构建成作品。', avatarUrl: null, gender: null },
   })
 }
 window.fetch = async (input, options = {}) => {
-  const path = String(input).replace(/^.*\/api\/v1/, '')
+  // Remove exactly one API base prefix. A duplicated `/api/v1` must remain
+  // visible so this fixture catches the same broken image URL seen in production.
+  const path = String(input).replace(/^.*?\/api\/v1/, '')
   const target = new Headers(options.headers).get('X-Workspace-Owner')
   if (target && isWorkspacePath(path) && fixtureUser.role !== 'ADMIN') return json({ detail: '需要管理员权限' }, 403)
   const scoped = memberData.get(target ?? fixtureUser.id)
@@ -192,7 +195,7 @@ window.fetch = async (input, options = {}) => {
     }
     if (parts[4] === 'replies' && options.method === 'POST') {
       const form = options.body as FormData
-      const reply: CommunityMessage = { id: `community-${++communitySequence}`, parentId: messageId!, authorId: fixtureUser.id, authorName: fixtureUser.displayName, authorRole: fixtureUser.role, content: String(form.get('content') ?? ''), imageUrl: form.get('image') ? `/api/v1/community/messages/community-${communitySequence}/image` : null, replyCount: 0, viewerCanDelete: true, createdAt: new Date().toISOString() }
+      const reply: CommunityMessage = { id: `community-${++communitySequence}`, parentId: messageId!, authorId: fixtureUser.id, authorName: fixtureUser.displayName, authorAvatarUrl: null, authorRole: fixtureUser.role, content: String(form.get('content') ?? ''), imageUrl: form.get('image') ? `/community/messages/community-${communitySequence}/image` : null, replyCount: 0, viewerCanDelete: true, createdAt: new Date().toISOString() }
       fixtureReplies.set(messageId!, [...(fixtureReplies.get(messageId!) ?? []), reply])
       fixtureMessages = fixtureMessages.map((item) => item.id === messageId ? { ...item, replyCount: item.replyCount + 1 } : item)
       return json(reply, 201)
@@ -204,7 +207,7 @@ window.fetch = async (input, options = {}) => {
     }
     if (pathname === '/community/messages' && options.method === 'POST') {
       const form = options.body as FormData
-      const message: CommunityMessage = { id: `community-${++communitySequence}`, parentId: null, authorId: fixtureUser.id, authorName: fixtureUser.displayName, authorRole: fixtureUser.role, content: String(form.get('content') ?? ''), imageUrl: form.get('image') ? `/api/v1/community/messages/community-${communitySequence}/image` : null, replyCount: 0, viewerCanDelete: true, createdAt: new Date().toISOString() }
+      const message: CommunityMessage = { id: `community-${++communitySequence}`, parentId: null, authorId: fixtureUser.id, authorName: fixtureUser.displayName, authorAvatarUrl: null, authorRole: fixtureUser.role, content: String(form.get('content') ?? ''), imageUrl: form.get('image') ? `/community/messages/community-${communitySequence}/image` : null, replyCount: 0, viewerCanDelete: true, createdAt: new Date().toISOString() }
       fixtureMessages = [message, ...fixtureMessages]
       return json(message, 201)
     }
@@ -258,6 +261,7 @@ window.fetch = async (input, options = {}) => {
     updateDiagnostics()
     return json({ detail: '测试：邮箱或密码不正确，请重试。' }, 401)
   }
+  if (path.startsWith('/auth/display-name-availability')) return json({ available: true })
   if (path === '/auth/me') return json(fixtureUser)
   if (path === '/auth/logout-all' && options.method === 'POST') return new Response(null, { status: 204 })
   if (path === '/auth/password' && options.method === 'PUT') {
@@ -293,7 +297,7 @@ window.fetch = async (input, options = {}) => {
       const account = adminAccounts.find((item) => item.userId === userId)!
       return json({
         account: { id: userId, email: account.email, displayName: account.displayName, role: account.role, enabled: account.enabled, registeredAt: account.registeredAt },
-        profile: { id: `profile-${userId}`, name: account.displayName, role: '内部协作者', bio: '仅用于验证管理员代管工作区布局。', avatarUrl: null, updatedAt: now },
+        profile: { id: `profile-${userId}`, name: account.displayName, role: '内部协作者', bio: '仅用于验证管理员代管工作区布局。', avatarUrl: null, gender: null, updatedAt: now },
         domains: [{ id: 'fixture-domain', name: '写作与思考', description: '', sortOrder: 0, createdAt: now, updatedAt: now }],
         tasks: Array.from({ length: adminDataCount }, (_, index) => ({ id: `workspace-task-${index + 1}`, title: `整理用户工作区 ${index + 1}`, done: index % 3 === 0, sortOrder: index, scheduledDate: null, dueAt: null, priority: index % 4 === 0 ? 'HIGH' : 'NORMAL', completedAt: null, archived: false, createdAt: now, updatedAt: now })),
         projects: Array.from({ length: adminDataCount }, (_, index) => ({ id: `workspace-project-${index + 1}`, name: `成员项目 ${index + 1}`, description: '用于验证成员项目列表搜索与分页。', techStack: ['Vue', 'TypeScript'], status: 'BUILDING', progress: (index * 7) % 100, nextAction: '继续整理资料', createdAt: now, updatedAt: now })),
@@ -410,6 +414,17 @@ window.fetch = async (input, options = {}) => {
     if (options.method === 'PUT') Object.assign(profile, JSON.parse(String(options.body)))
     return json(profile)
   }
+  if (path === '/profile/avatar' && options.method === 'POST') {
+    profile.avatarUrl = `/user-avatars/${target ?? fixtureUser.id}`
+    return json(profile)
+  }
+  if (path === '/profile/avatar' && options.method === 'DELETE') {
+    profile.avatarUrl = null
+    return json(profile)
+  }
+  if (path.startsWith('/user-avatars/') && !options.method) {
+    return new Response(sampleImage, { headers: { 'Content-Type': 'image/png' } })
+  }
   if (path === '/projects') return scenario.get('fail-module') === 'projects'
     ? json({ detail: '测试：项目模块暂时不可用。' }, 503) : json(projects)
   if (path === '/snippets' && options.method === 'POST') {
@@ -467,7 +482,7 @@ window.addEventListener('devnest:unauthorized', () => {
   useWorkspaceStore(pinia).clear()
   void router.push({ name: 'login' })
 })
-await router.replace(scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('messages') ? '/messages' : scenario.has('admin') ? '/admin/accounts' : scenario.has('profile') ? '/profile' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : '/knowledge')
+await router.replace(scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('announcements') ? '/announcements' : scenario.has('messages') ? '/messages' : scenario.has('admin') ? '/admin/accounts' : scenario.has('profile') ? '/profile' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : '/knowledge')
 app.mount('#app')
 
 const controls = document.createElement('details')

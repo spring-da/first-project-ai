@@ -157,6 +157,8 @@ class CommunicationIntegrationTest {
                 .andExpect(jsonPath("$.imageUrl").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
         String replyId = JsonPath.read(reply, "$.id");
+        assertThat((String) JsonPath.read(reply, "$.imageUrl"))
+                .isEqualTo("/community/messages/" + replyId + "/image");
 
         mvc.perform(get("/api/v1/community/messages").with(appJwt(member)))
                 .andExpect(status().isOk())

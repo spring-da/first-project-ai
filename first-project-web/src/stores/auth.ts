@@ -55,6 +55,14 @@ export const useAuthStore = defineStore('auth', () => {
   const register = (invitationToken: string, password: string, displayName: string) =>
     authenticate('register', { invitationToken, password, displayName })
 
+  async function displayNameAvailable(displayName: string) {
+    const result = await apiRequest<{ available: boolean }>(
+      `/auth/display-name-availability?displayName=${encodeURIComponent(displayName)}`,
+      { authenticated: false },
+    )
+    return result.available
+  }
+
   async function refreshUser() {
     if (!session.value) return false
     const currentSession = session.value
@@ -134,6 +142,7 @@ export const useAuthStore = defineStore('auth', () => {
     mustChangePassword,
     login,
     register,
+    displayNameAvailable,
     refreshUser,
     updateUser,
     changePassword,

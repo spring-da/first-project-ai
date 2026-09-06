@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Archive, CheckCircle2, CirclePause, Clock3, MoreHorizontal, Plus, Trash2 } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -15,6 +15,7 @@ import type { DevProject, ProjectDraft, ProjectStatus } from '../types'
 const workspace = useWorkspaceStore()
 const confirmation = useConfirmationStore()
 const route = useRoute()
+const router = useRouter()
 const searchState = useSearchStore()
 const search = computed(() => searchState.pageQuery)
 const statusFilter = ref<'ALL' | ProjectStatus>('ALL')
@@ -49,6 +50,21 @@ const filteredProjects = computed(() => {
 const projectsUnavailable = computed(() => !workspace.projects.length
   && (workspace.moduleStates.projects.loading || Boolean(workspace.moduleStates.projects.error)))
 
+function readStatusFilter(value: unknown): 'ALL' | ProjectStatus {
+  const candidate = typeof value === 'string' ? value.toUpperCase() : ''
+  if (candidate === 'ACTIVE') return 'BUILDING'
+  return filters.some((filter) => filter.value === candidate) ? candidate as 'ALL' | ProjectStatus : 'ALL'
+}
+
+function selectStatusFilter(value: 'ALL' | ProjectStatus) {
+  statusFilter.value = value
+  const query = { ...route.query }
+  delete query.focus
+  if (value === 'ALL') delete query.status
+  else query.status = value
+  void router.replace({ query })
+}
+
 async function locateProject(id: string) {
   if (!id || !workspace.projects.some((project) => project.id === id)) return
 
@@ -70,6 +86,9 @@ watch(
   (focus) => locateProject(typeof focus === 'string' ? focus : ''),
   { immediate: true },
 )
+watch(() => route.query.status, (status) => {
+  if (!route.query.focus) statusFilter.value = readStatusFilter(status)
+}, { immediate: true })
 watch(() => workspace.projects.length, () => {
   if (typeof route.query.focus === 'string') void locateProject(route.query.focus)
 })
@@ -126,7 +145,7 @@ async function removeProject(project: DevProject) {
 
     <div class="toolbar">
       <div class="filter-tabs">
-        <button v-for="filter in filters" :key="filter.value" type="button" :class="{ active: statusFilter === filter.value }" @click="statusFilter = filter.value">{{ filter.label }}</button>
+        <button v-for="filter in filters" :key="filter.value" type="button" :class="{ active: statusFilter === filter.value }" @click="selectStatusFilter(filter.value)">{{ filter.label }}</button>
       </div>
       <span class="list-context" aria-live="polite">{{ search ? `搜索“${search}” · ` : '' }}{{ filteredProjects.length }} 个项目<button v-if="search" type="button" @click="searchState.clear()">清除</button></span>
     </div>

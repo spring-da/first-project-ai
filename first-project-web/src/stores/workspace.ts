@@ -428,6 +428,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }))
   }
 
+  async function uploadProfileAvatar(file: File) {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    profile.value = await runMutation(() => apiRequest<DeveloperProfile>('/profile/avatar', {
+      method: 'POST', body: form, timeoutMs: 90_000,
+    }))
+  }
+
+  async function clearProfileAvatar() {
+    profile.value = await runMutation(() => apiRequest<DeveloperProfile>('/profile/avatar', {
+      method: 'DELETE',
+    }))
+  }
+
   function clear() {
     workspaceEpoch++
     mutationCount.value = 0
@@ -454,7 +468,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     loadAll, loadModule, createTask, updateTask, deleteTask, saveProject, deleteProject,
     saveSnippet, deleteSnippet, saveLog, deleteLog, loadMarkdownDocument, saveMarkdownDocument, deleteMarkdownDocument,
     importMarkdownDocuments, importMarkdownFiles, moveMarkdownDocumentsToDomain, moveKnowledgeItemsToDomain,
-    exportMarkdownDocuments, saveDomain, deleteDomain, saveProfile, clear,
+    exportMarkdownDocuments, saveDomain, deleteDomain, saveProfile, uploadProfileAvatar, clearProfileAvatar, clear,
     loadMarkdownTrash, loadMarkdownHistory, loadMarkdownRevision, restoreMarkdownDocument, purgeMarkdownDocument, restoreMarkdownRevision,
     loadItemTrash, restoreSnippetFromTrash, purgeSnippetFromTrash, restoreLogFromTrash, purgeLogFromTrash,
   }

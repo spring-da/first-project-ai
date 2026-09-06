@@ -13,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -37,6 +38,14 @@ public class AuthController {
     ) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(authService.login(request, httpRequest.getRemoteAddr()));
+    }
+
+    @GetMapping("/display-name-availability")
+    ResponseEntity<AuthDtos.DisplayNameAvailability> displayNameAvailability(
+            @RequestParam String displayName
+    ) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(authService.displayNameAvailability(displayName));
     }
 
     @GetMapping("/me")

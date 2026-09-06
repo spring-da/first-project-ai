@@ -1,7 +1,11 @@
 package com.springda.devnest.profile;
 
 import com.springda.devnest.common.BadRequestException;
+import com.springda.devnest.common.ConflictException;
 import com.springda.devnest.common.NotFoundException;
+import com.springda.devnest.user.DisplayNamePolicy;
+import com.springda.devnest.user.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,9 +17,11 @@ import java.util.Locale;
 public class ProfileService {
 
     private final ProfileRepository profiles;
+    private final UserRepository users;
 
-    public ProfileService(ProfileRepository profiles) {
+    public ProfileService(ProfileRepository profiles, UserRepository users) {
         this.profiles = profiles;
+        this.users = users;
     }
 
     @Transactional(readOnly = true)
@@ -26,11 +32,27 @@ public class ProfileService {
     @Transactional
     public ProfileDtos.Response update(String ownerId, ProfileDtos.UpdateRequest request) {
         var profile = find(ownerId);
+        var user = users.findById(ownerId).orElseThrow(() -> new NotFoundException("账户", ownerId));
+        var displayName = DisplayNamePolicy.normalize(request.name());
+        if (!displayName.equals(user.getDisplayName())) {
+            var key = DisplayNamePolicy.key(displayName);
+            if (users.existsByDisplayNameKeyAndIdNot(key, ownerId)
+                    || users.existsByDisplayNameIgnoreCaseAndIdNot(displayName, ownerId)) {
+                throw new ConflictException("该昵称已被占用，请换一个昵称");
+            }
+            user.changeDisplayName(displayName);
+            try {
+                users.flush();
+            } catch (DataIntegrityViolationException exception) {
+                throw new ConflictException("该昵称已被占用，请换一个昵称");
+            }
+        }
         profile.update(
-                request.name().trim(),
+                displayName,
                 request.role().trim(),
                 request.bio().trim(),
-                normalizeAvatarUrl(request.avatarUrl()));
+                normalizeAvatarUrl(request.avatarUrl()),
+                request.gender());
         return ProfileDtos.Response.from(profiles.save(profile));
     }
 

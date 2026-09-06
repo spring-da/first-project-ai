@@ -76,6 +76,7 @@ public class DevLogEntity extends BaseEntity {
 
     public void moveToDomain(String domainId) { this.domainId = domainId; }
 
+    public String getOwnerId() { return ownerId; }
     public String getDomainId() { return domainId; }
     public String getTitle() { return title; }
     public String getContent() { return content; }

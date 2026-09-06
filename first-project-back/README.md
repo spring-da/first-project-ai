@@ -17,10 +17,11 @@ Spring Boot 4.1.0 官方支持 Java 17–26，项目使用当前最新 Java 26�
 
 ## 已实现功能
 
-- 一次性邀请链接注册、邮箱登录、全设备主动注销及 BCrypt(12) 密码散列
+- 一次性邀请链接注册、注册昵称查重、邮箱登录、全设备主动注销及 BCrypt(12) 密码散列
 - 管理员人员管理、模拟登录成员完整工作区、管理员操作审计、短期随机临时密码、JWT 会话撤销和登录失败锁定
-- 管理员系统公告发布与撤回、成员单次已读提示
-- 成员意见交流、回复折叠分页、图片附件和管理员内容管理
+- 管理员 Markdown 系统公告发布与撤回、成员单次已读提示
+- 独立的系统公告与意见交流入口、回复折叠分页、链接识别、图片附件和管理员内容管理
+- Markdown 文章、代码片段和开发日志的限时公开只读分享与随时撤销
 - JWT 无状态认证
 - 按登录用户隔离所有业务数据
 - 带日期、截止时间、优先级、完成时间和归档状态的任务计划 CRUD
@@ -30,7 +31,7 @@ Spring Boot 4.1.0 官方支持 Java 17–26，项目使用当前最新 Java 26�
 - Markdown 图片上传、私有 OSS 存储及按账号鉴权读取（[配置说明](docs/MARKDOWN_IMAGES.md)）
 - 代码片段 CRUD
 - 结构化开发日志与标签 CRUD
-- 开发者资料查询与修改
+- 开发者资料查询与修改、性别设置、默认头像与私有 OSS 头像上传
 - 参数校验和统一 `ProblemDetail` 错误响应
 - MySQL 8 表结构、索引和 Flyway 迁移
 - Flutter Web 本地开发所需 CORS 配置
@@ -59,7 +60,7 @@ src/main/java/com/springda/devnest/
 src/main/resources/
 ├── application.yml
 ├── application-local.example.yml
-└── db/migration/  # V1 基础结构、V2–V14 增量迁移
+└── db/migration/  # V1 基础结构、V2–V16 增量迁移
 ```
 
 每个功能包内部按 `Controller → Service → Repository → Entity` 分层。
@@ -90,7 +91,7 @@ sql/mysql8/00_create_database.sql
 src/main/resources/db/migration/V1__init_schema.sql
 ```
 
-后续版本会继续按顺序执行增量迁移，其中 V7 引入管理员人员管理，V8 加固一次性邀请、临时密码、登录锁定和 JWT 会话撤销，V9 扩展任务计划，V12 保存管理员操作审计记录，V13 修正审计状态字段类型，V14 增加系统公告、成员已读状态和意见交流消息。
+后续版本会继续按顺序执行增量迁移，其中 V7 引入管理员人员管理，V8 加固一次性邀请、临时密码、登录锁定和 JWT 会话撤销，V9 扩展任务计划，V12 保存管理员操作审计记录，V13 修正审计状态字段类型，V14 增加系统公告、成员已读状态和意见交流消息，V15 增加昵称唯一键、性别与私有头像元数据，V16 增加代码片段和开发日志的限时分享链接。
 
 > V8 上线提示：迁移后，V8 之前签发的 JWT 因不含 `auth_version` 会统一失效，用户需要重新登录；V7 中尚未注册的旧邀请没有可交付的一次性 Token，管理员需要在人员管理页为这些邮箱重新生成邀请链接。
 
@@ -213,5 +214,4 @@ Flutter Web 本地开发地址需要加入 `CORS_ALLOWED_ORIGINS`。
 - Flutter `RemoteAppRepository` 对接 REST API
 - Refresh Token
 - 分页、搜索和增量同步接口
-- 头像文件上传
 - OpenAPI/Swagger 文档

@@ -2,6 +2,8 @@ package com.springda.devnest.snippet;
 
 import com.springda.devnest.common.NotFoundException;
 import com.springda.devnest.knowledge.KnowledgeDomainService;
+import com.springda.devnest.share.KnowledgeResourceType;
+import com.springda.devnest.share.KnowledgeShareRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,10 +15,16 @@ public class SnippetService {
 
     private final SnippetRepository snippets;
     private final KnowledgeDomainService domains;
+    private final KnowledgeShareRepository shares;
 
-    public SnippetService(SnippetRepository snippets, KnowledgeDomainService domains) {
+    public SnippetService(
+            SnippetRepository snippets,
+            KnowledgeDomainService domains,
+            KnowledgeShareRepository shares
+    ) {
         this.snippets = snippets;
         this.domains = domains;
+        this.shares = shares;
     }
 
     @Transactional(readOnly = true)
@@ -68,7 +76,9 @@ public class SnippetService {
 
     @Transactional
     public void purge(String ownerId, String id) {
-        snippets.delete(find(ownerId, id, true));
+        var snippet = find(ownerId, id, true);
+        shares.deleteAllByResourceTypeAndResourceIdAndOwnerId(KnowledgeResourceType.SNIPPET, id, ownerId);
+        snippets.delete(snippet);
     }
 
     @Transactional

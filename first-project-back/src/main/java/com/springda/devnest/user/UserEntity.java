@@ -28,6 +28,9 @@ public class UserEntity extends BaseEntity implements UserDetails {
     @Column(name = "display_name", nullable = false, length = 80)
     private String displayName;
 
+    @Column(name = "display_name_key", unique = true, length = 80)
+    private String displayNameKey;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role = UserRole.USER;
@@ -60,7 +63,7 @@ public class UserEntity extends BaseEntity implements UserDetails {
     public UserEntity(String email, String passwordHash, String displayName, UserRole role) {
         this.email = email;
         this.passwordHash = passwordHash;
-        this.displayName = displayName;
+        changeDisplayName(displayName);
         this.role = role;
     }
 
@@ -70,6 +73,15 @@ public class UserEntity extends BaseEntity implements UserDetails {
 
     public String getDisplayName() {
         return displayName;
+    }
+
+    public String getDisplayNameKey() {
+        return displayNameKey;
+    }
+
+    public void changeDisplayName(String displayName) {
+        this.displayName = DisplayNamePolicy.normalize(displayName);
+        this.displayNameKey = DisplayNamePolicy.key(this.displayName);
     }
 
     public UserRole getRole() {

@@ -12,7 +12,7 @@
 - Spring Security 7、OAuth2 Resource Server、HS256 JWT
 - Spring Data JPA / Hibernate，MySQL 8.4
 - Flyway 数据库迁移
-- 阿里云 OSS Java SDK 3.18.4，用于 Markdown 图片
+- 阿里云 OSS Java SDK 3.18.4，用于 Markdown、意见附件和用户头像图片
 - Maven；测试使用 JUnit、AssertJ、Mockito、Spring Security Test、MockMvc 和 H2 MySQL 模式
 
 常用命令：
@@ -36,7 +36,7 @@ mvn spring-boot:run
 - `image/`：Markdown 图片元数据、文件签名检查、OSS 存取和按账号鉴权读取。
 - `common/`：基础实体、业务异常和统一 `ProblemDetail` 错误响应。
 - `src/main/resources/application.yml`：环境变量映射、JPA/Flyway、multipart、Actuator 和连接池配置。
-- `src/main/resources/db/migration/`：按版本递增的生产数据库变更；当前为 V1–V14。
+- `src/main/resources/db/migration/`：按版本递增的生产数据库变更；当前为 V1–V16。
 - `src/test/java/`：服务测试与 Spring/MockMvc 集成测试。
 - `docs/`：API、Markdown 导入导出/恢复和 OSS 部署说明。
 - `compose.yml`：MySQL、后端和同级前端的本地/服务器编排入口。
@@ -50,7 +50,7 @@ SecurityFilterChain → JWT 解析 → Controller → Service → Repository →
                                            ↘ DTO Response
 ```
 
-- 只有 `POST /api/v1/auth/login`、`POST /api/v1/auth/register`、`/actuator/health` 和 OPTIONS 可匿名访问，其他请求默认都需要 JWT。
+- 只有 `POST /api/v1/auth/login`、`POST /api/v1/auth/register`、`GET /api/v1/auth/display-name-availability`、`/actuator/health` 和 OPTIONS 可匿名访问，其他请求默认都需要 JWT。
 - 业务 Controller 使用 `@WorkspaceOwner String ownerId`；认证与人员管理 Controller 使用 `@AuthenticationPrincipal Jwt` 保留原始操作者身份。
 - Controller 只处理 HTTP 状态、路径、校验和 DTO；事务与业务规则放在 Service。
 - Service 使用 `@Transactional`；只读查询标注 `@Transactional(readOnly = true)`。

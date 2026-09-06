@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { Archive, BookOpen, CalendarDays, Check, Clock3, Code2, FileText, Inbox, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { Archive, ArrowUpRight, BookOpen, CalendarDays, Check, Clock3, Code2, FileText, FolderKanban, Inbox, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 import WorkspaceModuleState from '../components/WorkspaceModuleState.vue'
@@ -12,6 +12,7 @@ import { localDateKey, matchesTaskView, sortTasks } from '../utils/tasks'
 import type { DevTask, TaskDraft, TaskPriority, TaskView } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
 const confirmation = useConfirmationStore()
@@ -19,6 +20,7 @@ const showTaskModal = ref(false)
 const editingTask = ref<DevTask | null>(null)
 const taskView = ref<TaskView>('TODAY')
 const taskScroll = ref<HTMLElement | null>(null)
+const taskPanel = ref<HTMLElement | null>(null)
 const dueLocal = ref('')
 const taskDraft = reactive<TaskDraft>({ title: '', scheduledDate: localDateKey(), dueAt: null, priority: 'NORMAL' })
 const today = computed(() => localDateKey())
@@ -51,6 +53,28 @@ const priorityMeta: Record<TaskPriority, { label: string; className: string }> =
 }
 const activeTaskView = computed(() => taskViews.find((item) => item.value === taskView.value)!)
 const taskViewCount = (view: TaskView) => workspace.tasks.filter((task) => matchesTaskView(task, view, today.value)).length
+const workspaceQuery = (query: Record<string, string> = {}) => auth.workspaceMember
+  ? { ...query, workspace: auth.workspaceMember.id } : query
+
+function readTaskView(value: unknown): TaskView | null {
+  const candidate = typeof value === 'string' ? value.toUpperCase() : ''
+  return taskViews.some((view) => view.value === candidate) ? candidate as TaskView : null
+}
+
+async function selectTaskView(view: TaskView, scrollToPanel = false) {
+  taskView.value = view
+  await router.replace({ query: { ...route.query, tasks: view.toLowerCase() } })
+  if (scrollToPanel) {
+    await nextTick()
+    taskPanel.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    taskScroll.value?.focus({ preventScroll: true })
+  }
+}
+
+watch(() => route.query.tasks, (value) => {
+  const requested = readTaskView(value)
+  if (requested) taskView.value = requested
+}, { immediate: true })
 
 function tomorrowKey() {
   const date = new Date()
@@ -135,17 +159,17 @@ function formatDueAt(value: string) {
     <WorkspaceModuleState module="profile" title="个人资料" :has-data="Boolean(workspace.profile)" compact />
 
     <section class="metric-grid" aria-label="工作台概览">
-      <article class="metric-card accent-card"><div class="metric-top"><span>今日进度</span><span class="metric-badge">{{ workspace.taskProgress }}%</span></div><strong>{{ !workspace.tasks.length && (workspace.moduleStates.tasks.loading || workspace.moduleStates.tasks.error) ? '—' : `${workspace.todayCompletedTasks} / ${workspace.todayTasks.length}` }}</strong><p>今天安排的任务已完成</p><div class="progress"><span :style="{ width: `${workspace.taskProgress}%` }"></span></div></article>
-      <article class="metric-card"><span>进行中的项目</span><strong>{{ !workspace.projects.length && (workspace.moduleStates.projects.loading || workspace.moduleStates.projects.error) ? '—' : workspace.activeProjects }}</strong><p>保持节奏，持续推进</p></article>
-      <article class="metric-card"><span>收藏的片段</span><strong>{{ !workspace.snippets.length && (workspace.moduleStates.snippets.loading || workspace.moduleStates.snippets.error) ? '—' : workspace.favoriteSnippets }}</strong><p>随时可复用的代码资产</p></article>
-      <article class="metric-card"><span>Markdown 文章</span><strong>{{ !workspace.markdownDocuments.length && (workspace.moduleStates.markdownDocuments.loading || workspace.moduleStates.markdownDocuments.error) ? '—' : workspace.markdownDocuments.length }}</strong><p>持续生长的个人知识库</p></article>
+      <button class="metric-card tasks" type="button" aria-label="查看今天的任务" @click="selectTaskView('TODAY', true)"><div class="metric-card-heading"><span class="metric-icon"><CalendarDays :size="18" /></span><span>查看任务<ArrowUpRight :size="15" /></span></div><div class="metric-top"><span>今日进度</span><span class="metric-badge">{{ workspace.taskProgress }}%</span></div><strong>{{ !workspace.tasks.length && (workspace.moduleStates.tasks.loading || workspace.moduleStates.tasks.error) ? '—' : `${workspace.todayCompletedTasks} / ${workspace.todayTasks.length}` }}</strong><p>今天安排的任务已完成</p><div class="progress"><span :style="{ width: `${workspace.taskProgress}%` }"></span></div></button>
+      <button class="metric-card projects" type="button" aria-label="查看构建中的项目" @click="router.push({ name: 'projects', query: workspaceQuery({ status: 'BUILDING' }) })"><div class="metric-card-heading"><span class="metric-icon"><FolderKanban :size="18" /></span><span>筛选项目<ArrowUpRight :size="15" /></span></div><span>进行中的项目</span><strong>{{ !workspace.projects.length && (workspace.moduleStates.projects.loading || workspace.moduleStates.projects.error) ? '—' : workspace.activeProjects }}</strong><p>保持节奏，持续推进</p></button>
+      <button class="metric-card snippets" type="button" aria-label="查看收藏的代码片段" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'snippets', featured: '1' }) })"><div class="metric-card-heading"><span class="metric-icon"><Code2 :size="18" /></span><span>查看收藏<ArrowUpRight :size="15" /></span></div><span>收藏的片段</span><strong>{{ !workspace.snippets.length && (workspace.moduleStates.snippets.loading || workspace.moduleStates.snippets.error) ? '—' : workspace.favoriteSnippets }}</strong><p>随时可复用的代码资产</p></button>
+      <button class="metric-card documents" type="button" aria-label="查看 Markdown 文章" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents' }) })"><div class="metric-card-heading"><span class="metric-icon"><FileText :size="18" /></span><span>打开文章<ArrowUpRight :size="15" /></span></div><span>Markdown 文章</span><strong>{{ !workspace.markdownDocuments.length && (workspace.moduleStates.markdownDocuments.loading || workspace.moduleStates.markdownDocuments.error) ? '—' : workspace.markdownDocuments.length }}</strong><p>持续生长的个人知识库</p></button>
     </section>
 
     <section class="dashboard-grid">
-      <article class="panel task-panel" aria-labelledby="task-heading">
+      <article ref="taskPanel" class="panel task-panel" aria-labelledby="task-heading">
         <div class="panel-heading"><div><p class="eyebrow">TASK PLANNER</p><h2 id="task-heading">{{ activeTaskView.label }}</h2></div><button class="icon-btn accent" type="button" aria-label="添加任务" @click="openTaskEditor()"><Plus :size="19" /></button></div>
         <div class="task-view-tabs" role="tablist" aria-label="任务视图">
-          <button v-for="view in taskViews" :key="view.value" type="button" role="tab" :aria-selected="taskView === view.value" :class="{ active: taskView === view.value }" @click="taskView = view.value"><component :is="view.icon" :size="14" /><span>{{ view.label }}</span><b>{{ taskViewCount(view.value) }}</b></button>
+          <button v-for="view in taskViews" :key="view.value" type="button" role="tab" :aria-selected="taskView === view.value" :class="{ active: taskView === view.value }" @click="selectTaskView(view.value)"><component :is="view.icon" :size="14" /><span>{{ view.label }}</span><b>{{ taskViewCount(view.value) }}</b></button>
         </div>
         <WorkspaceModuleState module="tasks" title="任务" :has-data="Boolean(workspace.tasks.length)" compact />
         <div ref="taskScroll" class="dashboard-scroll task-scroll" role="region" :aria-label="`${activeTaskView.label}任务列表`" tabindex="0">
@@ -162,7 +186,7 @@ function formatDueAt(value: string) {
       </article>
 
       <article class="panel project-panel">
-        <div class="panel-heading"><div><p class="eyebrow">PRIMARY PROJECT</p><h2>当前主项目</h2></div><button class="text-link" @click="router.push({ name: 'projects', query: workspace.primaryProject ? { focus: workspace.primaryProject.id } : {} })">查看项目</button></div>
+        <div class="panel-heading"><div><p class="eyebrow">PRIMARY PROJECT</p><h2>当前主项目</h2></div><button class="text-link" @click="router.push({ name: 'projects', query: workspaceQuery(workspace.primaryProject ? { focus: workspace.primaryProject.id } : {}) })">查看项目</button></div>
         <WorkspaceModuleState module="projects" title="项目" :has-data="Boolean(workspace.projects.length)" compact />
         <div class="dashboard-scroll" role="region" aria-label="当前主项目详情" tabindex="0">
           <template v-if="workspace.primaryProject">
@@ -170,21 +194,21 @@ function formatDueAt(value: string) {
             <div class="project-progress"><div><span>项目进度</span><strong>{{ workspace.primaryProject.progress }}%</strong></div><div class="progress"><span :style="{ width: `${workspace.primaryProject.progress}%` }"></span></div></div>
             <div class="next-action"><small>下一步行动</small><p>{{ workspace.primaryProject.nextAction }}</p></div>
           </template>
-          <EmptyState v-else-if="!workspace.moduleStates.projects.loading && !workspace.moduleStates.projects.error" class="panel-empty" compact title="还没有进行中的项目" description="创建一个项目，明确接下来真正要推进的事情。"><button class="button button-secondary" @click="router.push('/projects')"><Plus :size="15" />创建项目</button></EmptyState>
+          <EmptyState v-else-if="!workspace.moduleStates.projects.loading && !workspace.moduleStates.projects.error" class="panel-empty" compact title="还没有进行中的项目" description="创建一个项目，明确接下来真正要推进的事情。"><button class="button button-secondary" @click="router.push({ name: 'projects', query: workspaceQuery() })"><Plus :size="15" />创建项目</button></EmptyState>
         </div>
       </article>
     </section>
 
     <section class="knowledge-strip">
-      <div class="section-title"><div><p class="eyebrow">RECENT KNOWLEDGE</p><h2>最近沉淀</h2></div><button class="text-link" @click="router.push('/knowledge')">打开知识库</button></div>
+      <div class="section-title"><div><p class="eyebrow">RECENT KNOWLEDGE</p><h2>最近沉淀</h2></div><button class="text-link" @click="router.push({ name: 'knowledge', query: workspaceQuery() })">打开知识库</button></div>
       <WorkspaceModuleState module="markdownDocuments" title="Markdown 文章" :has-data="Boolean(workspace.markdownDocuments.length)" compact />
       <WorkspaceModuleState module="snippets" title="代码片段" :has-data="Boolean(workspace.snippets.length)" compact />
       <WorkspaceModuleState module="logs" title="开发日志" :has-data="Boolean(workspace.logs.length)" compact />
       <TransitionGroup name="list" tag="div" class="knowledge-grid">
-        <button v-for="document in recentDocuments" :key="document.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: { tab: 'documents', focus: document.id } })"><span class="knowledge-icon"><FileText :size="17" /></span><span><small>Markdown 文章</small><strong>{{ document.title }}</strong></span></button>
-        <button v-for="snippet in workspace.snippets.slice(0, 1)" :key="snippet.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: { tab: 'snippets', focus: snippet.id } })"><span class="knowledge-icon"><Code2 :size="17" /></span><span><small>{{ snippet.language }}</small><strong>{{ snippet.title }}</strong></span></button>
-        <button v-for="entry in recentLogs.slice(0, 1)" :key="entry.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: { tab: 'logs', focus: entry.id } })"><span class="knowledge-icon"><BookOpen :size="17" /></span><span><small>开发日志</small><strong>{{ entry.title || entry.content.slice(0, 24) }}</strong></span></button>
-        <button v-if="!workspace.loading && !workspace.hasLoadErrors && !workspace.markdownDocuments.length && !workspace.snippets.length && !recentLogs.length" class="knowledge-item create" @click="router.push({ name: 'knowledge', query: { tab: 'documents', create: '1' } })"><span class="knowledge-icon"><Plus :size="17" /></span><span><small>知识库</small><strong>写下第一篇文章</strong></span></button>
+        <button v-for="document in recentDocuments" :key="document.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents', focus: document.id }) })"><span class="knowledge-icon"><FileText :size="17" /></span><span><small>Markdown 文章</small><strong>{{ document.title }}</strong></span></button>
+        <button v-for="snippet in workspace.snippets.slice(0, 1)" :key="snippet.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'snippets', focus: snippet.id }) })"><span class="knowledge-icon"><Code2 :size="17" /></span><span><small>{{ snippet.language }}</small><strong>{{ snippet.title }}</strong></span></button>
+        <button v-for="entry in recentLogs.slice(0, 1)" :key="entry.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'logs', focus: entry.id }) })"><span class="knowledge-icon"><BookOpen :size="17" /></span><span><small>开发日志</small><strong>{{ entry.title || entry.content.slice(0, 24) }}</strong></span></button>
+        <button v-if="!workspace.loading && !workspace.hasLoadErrors && !workspace.markdownDocuments.length && !workspace.snippets.length && !recentLogs.length" class="knowledge-item create" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents', create: '1' }) })"><span class="knowledge-icon"><Plus :size="17" /></span><span><small>知识库</small><strong>写下第一篇文章</strong></span></button>
       </TransitionGroup>
     </section>
 
@@ -207,6 +231,20 @@ function formatDueAt(value: string) {
 .focus-pill.warning { color: var(--warning); }
 .focus-pill.warning > span { background: var(--warning); }
 .metric-grid { gap: var(--dashboard-column-gap); }
+.metric-card { --metric-color: var(--accent); position: relative; min-width: 0; overflow: hidden; color: var(--text); text-align: left; font: inherit; cursor: pointer; background: linear-gradient(145deg, color-mix(in srgb, var(--metric-color) 8%, var(--panel)) 0%, var(--panel) 66%); transition: border-color var(--motion-fast), box-shadow var(--motion-base), transform var(--motion-base) var(--ease-emphasized); }
+.metric-card::after { content: ''; position: absolute; right: -42px; bottom: -54px; width: 128px; height: 128px; border: 22px solid color-mix(in srgb, var(--metric-color) 7%, transparent); border-radius: 50%; pointer-events: none; }
+.metric-card:hover { border-color: color-mix(in srgb, var(--metric-color) 32%, var(--border)); box-shadow: 0 12px 28px color-mix(in srgb, var(--metric-color) 10%, transparent); transform: translateY(-3px); }
+.metric-card:active { transform: translateY(-1px) scale(.995); }
+.metric-card:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+.metric-card.projects { --metric-color: var(--success); }.metric-card.snippets { --metric-color: #8464d6; }.metric-card.documents { --metric-color: #c77a2a; }
+.metric-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
+.metric-card-heading > span:last-child { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; font-weight: 650; }
+.metric-card-heading .metric-icon { width: 34px; height: 34px; display: grid; place-items: center; color: var(--metric-color); border-radius: 10px; background: color-mix(in srgb, var(--metric-color) 12%, var(--panel)); }
+.metric-card:hover .metric-card-heading > span:last-child { color: var(--metric-color); }
+.metric-card > strong { position: relative; z-index: 1; }
+.metric-card > p { position: relative; z-index: 1; }
+.metric-card .progress { position: relative; z-index: 1; }
+.metric-card.tasks { background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 11%, var(--panel)) 0%, var(--panel) 70%); border-color: var(--accent-border); }
 .dashboard-grid { --dashboard-panel-height: clamp(430px, 52svh, 560px); grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--dashboard-column-gap); }
 .dashboard-grid > .panel { display: flex; flex-direction: column; height: var(--dashboard-panel-height); min-height: 0; min-width: 0; overflow: hidden; }
 .panel-heading { flex-shrink: 0; gap: 12px; }

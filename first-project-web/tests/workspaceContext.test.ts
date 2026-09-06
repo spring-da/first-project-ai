@@ -22,10 +22,12 @@ test('member context applies only to workspace data; authentication and system c
   const calls: Array<[string, string | null]> = []
   context.mock.method(globalThis, 'fetch', async (url, options) => {
     calls.push([String(url), options.headers.get('X-Workspace-Owner')])
-    if (!String(url).includes('/public/')) assert.equal(options.headers.get('Authorization'), 'Bearer admin-token')
+    if (String(url).includes('/public/')) assert.equal(options.headers.get('Authorization'), null)
+    else assert.equal(options.headers.get('Authorization'), 'Bearer admin-token')
     return Response.json({})
   })
   await apiRequest('/tasks', { method: 'POST', body: '{}' })
+  await apiRequest('/profile/avatar', { method: 'POST', body: new FormData() })
   await apiRequest('/markdown-documents/id/shares')
   await apiDownload('/markdown-documents/export', { method: 'POST', body: '{}' })
   await apiDownload('/markdown-images/image')
@@ -34,9 +36,11 @@ test('member context applies only to workspace data; authentication and system c
   await apiRequest('/announcements/unread')
   await apiRequest('/community/messages')
   await apiDownload('/community/messages/message/image')
+  await apiDownload('/user-avatars/user')
   await apiDownload('/public/markdown-shares/token/images/image', { authenticated: false })
+  await apiRequest('/public/knowledge-shares/token', { authenticated: false })
   assert.deepEqual(calls.map(([, owner]) => owner), [
-    'member', 'member', 'member', 'member', null, null, null, null, null, null,
+    'member', 'member', 'member', 'member', 'member', null, null, null, null, null, null, null, null,
   ])
   setRequestWorkspace(null)
   await apiRequest('/tasks')

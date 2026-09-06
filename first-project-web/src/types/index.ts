@@ -1,6 +1,7 @@
 export type ProjectStatus = 'PLANNING' | 'BUILDING' | 'PAUSED' | 'COMPLETED'
 export type LogCategory = 'PROBLEM' | 'DECISION' | 'LEARNING' | 'IDEA'
 export type UserRole = 'USER' | 'ADMIN'
+export type ProfileGender = 'MALE' | 'FEMALE' | 'OTHER'
 export type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
 export type TaskView = 'TODAY' | 'UPCOMING' | 'INBOX' | 'COMPLETED' | 'ARCHIVED'
 
@@ -83,6 +84,7 @@ export interface CommunityMessage {
   parentId: string | null
   authorId: string
   authorName: string
+  authorAvatarUrl: string | null
   authorRole: UserRole
   content: string
   imageUrl: string | null
@@ -263,6 +265,21 @@ export interface PublicMarkdownShare {
   expiresAt: string
 }
 
+export type KnowledgeShareLink = MarkdownShareLink
+export type KnowledgeShareSecret = MarkdownShareSecret
+
+export interface PublicKnowledgeShare {
+  resourceType: 'SNIPPET' | 'DEV_LOG'
+  title: string
+  content: string
+  language: string | null
+  category: LogCategory | null
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+  expiresAt: string
+}
+
 export interface MarkdownImportDocument {
   fileName: string
   title?: string
@@ -301,6 +318,7 @@ export interface DeveloperProfile {
   role: string
   bio: string
   avatarUrl: string | null
+  gender: ProfileGender | null
   updatedAt: string
 }
 
@@ -341,4 +359,5 @@ export interface ProfileDraft {
   role: string
   bio: string
   avatarUrl: string | null
+  gender: ProfileGender | null
 }

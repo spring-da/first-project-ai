@@ -50,6 +50,7 @@ public class SnippetEntity extends BaseEntity {
 
     public void moveToDomain(String domainId) { this.domainId = domainId; }
 
+    public String getOwnerId() { return ownerId; }
     public String getDomainId() { return domainId; }
     public String getTitle() { return title; }
     public String getLanguage() { return language; }

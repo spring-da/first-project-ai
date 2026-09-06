@@ -45,4 +45,7 @@ public final class AuthDtos {
             boolean mustChangePassword
     ) {
     }
+
+    public record DisplayNameAvailability(boolean available) {
+    }
 }

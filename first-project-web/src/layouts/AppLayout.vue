@@ -5,6 +5,7 @@ import type { RouteLocationRaw } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import {
   ArrowLeft,
+  BellRing,
   ShieldCheck,
   BookOpen,
   ChevronRight,
@@ -12,7 +13,7 @@ import {
   Cloud,
   FolderKanban,
   Grid2X2,
-  MessageSquareText,
+  MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
@@ -23,6 +24,8 @@ import {
 } from 'lucide-vue-next'
 import AppLogo from '../components/AppLogo.vue'
 import AppModal from '../components/AppModal.vue'
+import MarkdownContent from '../components/MarkdownContent.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import WorkspaceUtilities from '../components/WorkspaceUtilities.vue'
 import SearchScopeSelect from '../components/SearchScopeSelect.vue'
 import { useAuthStore } from '../stores/auth'
@@ -58,11 +61,10 @@ function readSidebarCollapsed() {
 const sidebarCollapsed = ref(readSidebarCollapsed())
 const editorFocused = ref(false)
 const editorSidebarCollapsed = ref(true)
-const toolsSidebarCollapsed = ref(true)
 const toolsFocused = computed(() => route.name === 'tools')
 const isSidebarCollapsed = computed(() => editorFocused.value
   ? editorSidebarCollapsed.value
-  : toolsFocused.value ? toolsSidebarCollapsed.value : sidebarCollapsed.value)
+  : sidebarCollapsed.value)
 
 function setEditorFocused(editing: boolean) {
   editorFocused.value = route.name === 'knowledge' && editing
@@ -84,7 +86,8 @@ const navItems = computed(() => [
   { to: '/', label: '工作台', icon: Grid2X2 },
   { to: '/projects', label: '项目', icon: FolderKanban },
   { to: '/knowledge', label: '知识库', icon: BookOpen },
-  { to: '/messages', label: '消息中心', icon: MessageSquareText },
+  { to: '/announcements', label: '系统公告', icon: BellRing },
+  { to: '/messages', label: '意见交流', icon: MessagesSquare },
   { to: '/tools', label: '系统工具', icon: Wrench, auxiliary: true },
   ...(auth.isAdmin && !auth.workspaceMember ? [{ to: '/admin/accounts', label: '人员管理', icon: UsersRound }] : []),
   { to: '/profile', label: '我的', icon: CircleUserRound },
@@ -111,7 +114,6 @@ function workspaceLink(path: string) {
 
 const displayName = computed(() => workspace.profile?.name || auth.workspaceUser?.displayName || '开发者')
 const displayRole = computed(() => workspace.profile?.role || auth.workspaceUser?.email || 'DevNest User')
-const initial = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'D')
 const isKnowledgeRoute = computed(() => route.name === 'knowledge')
 const hasPageSearch = computed(() => isKnowledgeRoute.value || route.name === 'projects')
 const currentNav = computed(() => navItems.value.find((item) => item.to === route.path) ?? navItems.value[0]!)
@@ -215,10 +217,6 @@ function toggleSidebar() {
     editorSidebarCollapsed.value = !editorSidebarCollapsed.value
     return
   }
-  if (toolsFocused.value) {
-    toolsSidebarCollapsed.value = !toolsSidebarCollapsed.value
-    return
-  }
   sidebarCollapsed.value = !sidebarCollapsed.value
   try {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(sidebarCollapsed.value))
@@ -229,7 +227,6 @@ function toggleSidebar() {
 
 watch(() => route.name, () => {
   if (route.name !== 'knowledge') editorFocused.value = false
-  if (route.name === 'tools') toolsSidebarCollapsed.value = true
   search.reset(hasPageSearch.value ? 'page' : 'global')
   globalSearchOpen.value = false
 }, { immediate: true })
@@ -291,7 +288,7 @@ onBeforeUnmount(() => {
           <span>{{ workspace.error || workspace.hasLoadErrors ? '部分数据同步失败 · 可局部重试' : (workspace.loading ? '正在连接云端…' : '云端数据已同步') }}</span>
         </div>
         <RouterLink class="profile-chip" :to="workspaceLink('/profile')" :title="displayName" :aria-label="`打开 ${displayName} 的个人设置`">
-          <span class="avatar">{{ initial }}</span>
+          <UserAvatar class="avatar" :name="displayName" :seed="auth.workspaceUser?.id" :url="workspace.profile?.avatarUrl" />
           <span><strong>{{ displayName }}</strong><small>{{ displayRole }}</small></span>
           <ChevronRight :size="16" />
         </RouterLink>
@@ -351,8 +348,8 @@ onBeforeUnmount(() => {
       @close="acknowledgeAnnouncement"
     >
       <div class="announcement-modal-copy">
-        <span><MessageSquareText :size="20" /></span>
-        <p>{{ activeAnnouncement.content }}</p>
+        <span><BellRing :size="20" /></span>
+        <div class="announcement-modal-markdown"><MarkdownContent :source="activeAnnouncement.content" /></div>
       </div>
       <div class="announcement-modal-actions">
         <small v-if="communication.unreadAnnouncements.length > 1">确认后继续查看下一则公告</small>
@@ -373,7 +370,15 @@ onBeforeUnmount(() => {
 .member-access-banner > a { flex-shrink: 0; }
 .announcement-modal-copy { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 14px; align-items: start; }
 .announcement-modal-copy > span { width: 42px; height: 42px; display: grid; place-items: center; color: var(--accent); border-radius: 11px; background: var(--accent-bg); }
-.announcement-modal-copy p { margin: 2px 0 0; color: var(--subtle); font-size: var(--font-sm); line-height: 1.78; white-space: pre-wrap; overflow-wrap: anywhere; }
+.announcement-modal-markdown { max-height: min(52vh, 560px); overflow: auto; padding: 2px 4px 2px 0; color: var(--subtle); font-size: var(--font-sm); line-height: 1.72; }
+.announcement-modal-markdown :deep(.markdown-body > :first-child) { margin-top: 0; }
+.announcement-modal-markdown :deep(.markdown-body > :last-child) { margin-bottom: 0; }
+.announcement-modal-markdown :deep(h1), .announcement-modal-markdown :deep(h2), .announcement-modal-markdown :deep(h3) { margin: 1.1em 0 .5em; color: var(--text); line-height: 1.3; }
+.announcement-modal-markdown :deep(p), .announcement-modal-markdown :deep(ul), .announcement-modal-markdown :deep(ol), .announcement-modal-markdown :deep(blockquote), .announcement-modal-markdown :deep(pre) { margin: 0 0 .9em; }
+.announcement-modal-markdown :deep(a) { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.announcement-modal-markdown :deep(blockquote) { padding: .45em .9em; border-left: 3px solid var(--accent); background: var(--surface-sunken); }
+.announcement-modal-markdown :deep(pre) { overflow: auto; padding: 12px; border-radius: 9px; background: var(--code-bg); }
+.announcement-modal-markdown :deep(code) { font-family: "Cascadia Code", Consolas, monospace; }
 .announcement-modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 24px; }
 .announcement-modal-actions small { color: var(--muted); font-size: var(--font-2xs); }
 @media (max-width: 600px) { .member-access-banner { flex-wrap: wrap; padding: 9px 12px; } .member-access-banner > span { flex-basis: calc(100% - 30px); } .member-access-banner > a { margin-left: auto; min-height: 32px; } }

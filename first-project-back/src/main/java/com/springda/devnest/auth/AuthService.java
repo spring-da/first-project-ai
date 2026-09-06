@@ -1,12 +1,15 @@
 package com.springda.devnest.auth;
 
 import com.springda.devnest.common.BadRequestException;
+import com.springda.devnest.common.ConflictException;
 import com.springda.devnest.common.NotFoundException;
 import com.springda.devnest.admin.RegistrationInvitationRepository;
 import com.springda.devnest.profile.ProfileEntity;
 import com.springda.devnest.profile.ProfileRepository;
 import com.springda.devnest.user.UserEntity;
+import com.springda.devnest.user.DisplayNamePolicy;
 import com.springda.devnest.user.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -64,13 +67,33 @@ public class AuthService {
             throw invalidInvitation();
         }
 
-        var user = users.save(new UserEntity(
-                email,
-                passwordEncoder.encode(request.password()),
-                request.displayName().trim()));
-        profiles.save(ProfileEntity.initial(user.getId(), request.displayName().trim()));
+        var displayName = DisplayNamePolicy.normalize(request.displayName());
+        var displayNameKey = DisplayNamePolicy.key(displayName);
+        if (users.existsByDisplayNameKey(displayNameKey)
+                || users.existsByDisplayNameIgnoreCase(displayName)) {
+            throw nicknameUnavailable();
+        }
+
+        UserEntity user;
+        try {
+            user = users.saveAndFlush(new UserEntity(
+                    email,
+                    passwordEncoder.encode(request.password()),
+                    displayName));
+        } catch (DataIntegrityViolationException exception) {
+            throw nicknameUnavailable();
+        }
+        profiles.save(ProfileEntity.initial(user.getId(), displayName));
         invitation.markRegistered(user.getId());
         return response(user);
+    }
+
+    @Transactional(readOnly = true)
+    public AuthDtos.DisplayNameAvailability displayNameAvailability(String candidate) {
+        var displayName = DisplayNamePolicy.normalize(candidate);
+        var available = !users.existsByDisplayNameKey(DisplayNamePolicy.key(displayName))
+                && !users.existsByDisplayNameIgnoreCase(displayName);
+        return new AuthDtos.DisplayNameAvailability(available);
     }
 
     public AuthDtos.AuthResponse login(AuthDtos.LoginRequest request, String remoteAddress) {
@@ -140,5 +163,9 @@ public class AuthService {
 
     private BadRequestException invalidInvitation() {
         return new BadRequestException("邀请链接无效、已使用或已过期，请联系管理员重新获取");
+    }
+
+    private ConflictException nicknameUnavailable() {
+        return new ConflictException("该昵称已被占用，请换一个昵称");
     }
 }

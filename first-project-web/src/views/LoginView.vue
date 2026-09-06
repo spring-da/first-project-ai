@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowRight, BookOpen, Cloud, Eye, EyeOff, FolderKanban, ShieldCheck } from 'lucide-vue-next'
 import AppLogo from '../components/AppLogo.vue'
@@ -17,6 +17,9 @@ const mode = ref<'login' | 'register'>(invitationToken.value ? 'register' : 'log
 const email = ref('')
 const password = ref('')
 const displayName = ref('')
+const nameAvailability = ref<'idle' | 'checking' | 'available' | 'unavailable'>('idle')
+let availabilityTimer: number | null = null
+let availabilityVersion = 0
 const showPassword = ref(false)
 const title = computed(() => mode.value === 'login' ? '欢迎回到工作台' : '创建你的 DevNest')
 
@@ -24,9 +27,33 @@ watch(invitationToken, (token) => {
   if (token) mode.value = 'register'
 })
 
+watch([displayName, mode], ([name, currentMode]) => {
+  if (availabilityTimer !== null) window.clearTimeout(availabilityTimer)
+  const version = ++availabilityVersion
+  nameAvailability.value = 'idle'
+  if (currentMode !== 'register' || !name.trim()) return
+  nameAvailability.value = 'checking'
+  availabilityTimer = window.setTimeout(async () => {
+    try {
+      const available = await auth.displayNameAvailable(name.trim())
+      if (version === availabilityVersion) nameAvailability.value = available ? 'available' : 'unavailable'
+    } catch {
+      if (version === availabilityVersion) nameAvailability.value = 'idle'
+    }
+  }, 350)
+})
+
+onBeforeUnmount(() => {
+  if (availabilityTimer !== null) window.clearTimeout(availabilityTimer)
+})
+
 async function submit() {
   if (mode.value === 'register' && !invitationToken.value) {
     auth.error = '注册必须使用管理员生成的一次性邀请链接。'
+    return
+  }
+  if (mode.value === 'register' && nameAvailability.value === 'unavailable') {
+    auth.error = '该昵称已被占用，请换一个昵称。'
     return
   }
   const ok = mode.value === 'login'
@@ -68,7 +95,7 @@ function switchMode(next: 'login' | 'register') {
         <Transition name="auth-mode" mode="out-in">
           <div :key="mode" class="auth-mode-content">
             <div class="auth-heading"><p class="eyebrow">DEVNEST ACCOUNT</p><h2>{{ title }}</h2><p>{{ mode === 'login' ? '使用和 Android App 相同的账户登录。' : invitationToken ? '一次性邀请已识别，请设置你的账户信息。' : '注册需要管理员生成的一次性邀请链接。' }}</p></div>
-            <label v-if="mode === 'register'" class="field"><span>显示名称</span><input v-model.trim="displayName" type="text" maxlength="80" required autocomplete="name" placeholder="你希望怎样被称呼" /></label>
+            <label v-if="mode === 'register'" class="field"><span>显示名称</span><input v-model.trim="displayName" type="text" maxlength="80" required autocomplete="name" placeholder="你希望怎样被称呼" /><small v-if="nameAvailability !== 'idle'" class="name-availability" :class="nameAvailability">{{ nameAvailability === 'checking' ? '正在检查昵称…' : nameAvailability === 'available' ? '这个昵称可以使用' : '该昵称已被占用，请换一个昵称' }}</small></label>
             <label v-if="mode === 'login'" class="field"><span>邮箱</span><input v-model.trim="email" type="email" required autocomplete="email" placeholder="name@example.com" /></label>
             <p v-else class="invitation-state" :class="{ missing: !invitationToken }"><ShieldCheck :size="16" />{{ invitationToken ? '此链接只能成功注册一次，提交后立即失效。' : '请向管理员获取新的邀请链接后再继续。' }}</p>
           </div>
@@ -81,7 +108,7 @@ function switchMode(next: 'login' | 'register') {
           </span>
         </label>
 
-        <button class="submit-button" type="submit" :disabled="auth.busy || (mode === 'register' && !invitationToken)"><span>{{ auth.busy ? '正在连接…' : mode === 'login' ? '进入工作台' : '创建账户' }}</span><ArrowRight :size="18" /></button>
+        <button class="submit-button" type="submit" :disabled="auth.busy || (mode === 'register' && (!invitationToken || nameAvailability === 'checking' || nameAvailability === 'unavailable'))"><span>{{ auth.busy ? '正在连接…' : mode === 'login' ? '进入工作台' : '创建账户' }}</span><ArrowRight :size="18" /></button>
         <p class="auth-footer">继续即表示你将在此浏览器安全保存登录会话。</p>
       </form>
     </section>
@@ -119,6 +146,10 @@ function switchMode(next: 'login' | 'register') {
 .field > span:first-child { color: var(--subtle); font-size: var(--font-sm); font-weight: 650; }
 .field input { width: 100%; height: var(--control-height); padding: 0 15px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 11px; outline: 0; background: var(--panel); font-size: var(--font-sm); box-shadow: inset 0 1px 0 rgba(255,255,255,.025); }
 .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.name-availability { font-size: var(--font-2xs); }
+.name-availability.checking { color: var(--muted); }
+.name-availability.available { color: var(--success); }
+.name-availability.unavailable { color: var(--danger); }
 .password-field { position: relative; }
 .password-field button { position: absolute; right: 9px; top: 50%; display: grid; place-items: center; padding: 5px; color: var(--muted); border: 0; background: transparent; transform: translateY(-50%); cursor: pointer; }
 .password-field input { padding-right: 44px; }

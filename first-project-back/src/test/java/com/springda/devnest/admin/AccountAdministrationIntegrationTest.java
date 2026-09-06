@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,13 +29,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:account-administration;MODE=MySQL;DB_CLOSE_DELAY=-1",
@@ -197,6 +205,67 @@ class AccountAdministrationIntegrationTest {
                         .content("{\"email\":\"friend@example.com\",\"password\":\"friend-password\"}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.detail").value("邮箱或密码错误"));
+    }
+
+    @Test
+    void registrationAndProfileUpdatesRejectAnOccupiedNickname() throws Exception {
+        var invitationResult = mvc.perform(post("/api/v1/admin/invitations").with(appJwt(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"nickname@example.com\"}"))
+                .andExpect(status().isCreated()).andReturn();
+        String token = JsonPath.read(invitationResult.getResponse().getContentAsString(), "$.invitationToken");
+
+        mvc.perform(get("/api/v1/auth/display-name-availability").param("displayName", " friend "))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false));
+        mvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"invitationToken":"%s","password":"strong-password","displayName":" FRIEND "}
+                                """.formatted(token)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("该昵称已被占用，请换一个昵称"));
+
+        mvc.perform(put("/api/v1/profile").with(appJwt(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"administrator\",\"role\":\"Developer\",\"bio\":\"Hello\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value("该昵称已被占用，请换一个昵称"));
+        assertThat(users.findById(user.getId()).orElseThrow().getDisplayName()).isEqualTo("Friend");
+    }
+
+    @Test
+    void memberCanUploadReadAndResetAnAvatarAndLeaveGenderUnset() throws Exception {
+        byte[] png = java.util.Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/XxoAAAAASUVORK5CYII=");
+        mvc.perform(multipart("/api/v1/profile/avatar").file(
+                                new MockMultipartFile("file", "avatar.png", "image/png", png))
+                        .with(appJwt(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatarUrl").value("/user-avatars/" + user.getId()))
+                .andExpect(jsonPath("$.gender").doesNotExist());
+
+        var profile = profiles.findByOwnerId(user.getId()).orElseThrow();
+        doAnswer(invocation -> {
+            ((java.io.OutputStream) invocation.getArgument(1)).write(png);
+            return null;
+        }).when(imageStorage).transferTo(eq(profile.getAvatarObjectKey()), any(java.io.OutputStream.class));
+        var imageRequest = mvc.perform(get("/api/v1/user-avatars/{id}", user.getId()).with(appJwt(admin)))
+                .andExpect(request().asyncStarted()).andReturn();
+        mvc.perform(asyncDispatch(imageRequest))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(png));
+
+        mvc.perform(put("/api/v1/profile").with(appJwt(user))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Friend\",\"role\":\"Developer\",\"bio\":\"Hello\",\"gender\":\"FEMALE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.gender").value("FEMALE"))
+                .andExpect(jsonPath("$.avatarUrl").value("/user-avatars/" + user.getId()));
+
+        mvc.perform(delete("/api/v1/profile/avatar").with(appJwt(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatarUrl").doesNotExist());
     }
 
     @Test

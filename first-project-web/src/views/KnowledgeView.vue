@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onDeactivated, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, Braces, Check, CheckSquare, ChevronDown, Clipboard, Code2, Download, Edit3, FileText, Filter, Folder, Heart, LoaderCircle, MoreHorizontal, Pin, Plus, RotateCcw, Save, Sparkles, Square, Trash2, Upload } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, BookOpen, Braces, Check, CheckSquare, ChevronDown, Clipboard, Code2, Download, Edit3, FileText, Filter, Folder, Heart, LoaderCircle, MoreHorizontal, Pin, Plus, RotateCcw, Save, Share2, Sparkles, Square, Trash2, Upload } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -9,6 +9,7 @@ import JsonTree from '../components/JsonTree.vue'
 import JsonSnippetEditor from '../components/JsonSnippetEditor.vue'
 import KnowledgeDirectories from '../components/KnowledgeDirectories.vue'
 import LanguageSelect from '../components/LanguageSelect.vue'
+import KnowledgeShareDialog from '../components/KnowledgeShareDialog.vue'
 import MarkdownWorkspace from '../components/MarkdownWorkspace.vue'
 import WorkspaceModuleState from '../components/WorkspaceModuleState.vue'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -73,6 +74,7 @@ const bulkDomainId = ref('')
 const showTypeMenu = ref(false)
 const showBulkDomainMenu = ref(false)
 const rowActionMenu = ref<{ item: UnifiedKnowledgeItem; x: number; y: number } | null>(null)
+const shareTarget = ref<{ kind: 'snippets' | 'logs'; id: string; title: string } | null>(null)
 const snippetDraft = reactive<SnippetDraft>({ title: '', language: '', code: '', favorite: false, domainId: null })
 const logDraft = reactive<LogDraft>({ title: '', content: '', category: 'LEARNING', tags: [], pinned: false, domainId: null })
 const domainDraft = reactive<DomainDraft>({ name: '', description: '', sortOrder: 0 })
@@ -177,6 +179,14 @@ function selectType(next: KnowledgeTypeFilter) {
   void router.replace({ query: next === 'all' ? {} : { type: next } })
 }
 
+function toggleFeaturedOnly() {
+  favoriteOnly.value = !favoriteOnly.value
+  const query = { ...route.query }
+  if (favoriteOnly.value) query.featured = '1'
+  else delete query.featured
+  void router.replace({ query })
+}
+
 function selectTypeOption(value: KnowledgeTypeFilter) {
   selectType(value)
   showTypeMenu.value = false
@@ -263,6 +273,11 @@ function openLogPreview(entry: DevLogEntry, syncRoute = true) {
   editingLog.value = null
   itemView.value = 'preview'
   if (syncRoute) void router.replace({ query: routeQueryWithFocus(entry.id) })
+}
+
+function openKnowledgeShare(kind: 'snippets' | 'logs', id: string, title: string) {
+  shareTarget.value = { kind, id, title }
+  rowActionMenu.value = null
 }
 
 async function openKnowledgeItem(item: UnifiedKnowledgeItem) {
@@ -735,6 +750,7 @@ watch(totalPages, (value) => { if (currentPage.value > value) currentPage.value 
 watch(() => route.query, async (query) => {
   const requestedType = query.type ?? query.tab
   typeFilter.value = requestedType === 'documents' || requestedType === 'snippets' || requestedType === 'logs' ? requestedType : 'all'
+  favoriteOnly.value = query.featured === '1'
   if (query.create === '1') {
     const createType = query.tab === 'snippets' || query.tab === 'logs' ? query.tab : 'documents'
     await nextTick(() => openCreate(createType))
@@ -785,6 +801,7 @@ onDeactivated(() => emit('editing-change', false))
             <header class="knowledge-reader__bar">
               <button class="detail-back" type="button" aria-label="返回代码片段列表" @click="closeItemWorkspace()"><ArrowLeft :size="18" /><span>返回片段</span></button>
               <div class="detail-actions">
+                <button class="detail-toolbar-button" type="button" aria-label="分享代码片段" @click="openKnowledgeShare('snippets', activeSnippet.id, activeSnippet.title)"><Share2 :size="16" /><span>分享</span></button>
                 <button class="detail-toolbar-button" type="button" :aria-label="copiedId === activeSnippet.id ? '代码已复制' : '复制代码'" @click="copyCode(activeSnippet)"><Check v-if="copiedId === activeSnippet.id" :size="16" /><Clipboard v-else :size="16" /><span>{{ copiedId === activeSnippet.id ? '已复制' : '复制代码' }}</span></button>
                 <button class="detail-toolbar-button" type="button" :aria-label="activeSnippet.favorite ? '取消收藏片段' : '收藏片段'" @click="toggleFavorite(activeSnippet)"><Heart :size="16" :fill="activeSnippet.favorite ? 'currentColor' : 'none'" /><span>{{ activeSnippet.favorite ? '取消收藏' : '收藏' }}</span></button>
                 <button class="detail-toolbar-button" type="button" aria-label="编辑片段" @click="openSnippetEditor(activeSnippet)"><Edit3 :size="16" /><span>编辑片段</span></button>
@@ -805,6 +822,7 @@ onDeactivated(() => emit('editing-change', false))
             <header class="knowledge-reader__bar">
               <button class="detail-back" type="button" aria-label="返回开发日志列表" @click="closeItemWorkspace()"><ArrowLeft :size="18" /><span>返回日志</span></button>
               <div class="detail-actions">
+                <button class="detail-toolbar-button" type="button" aria-label="分享开发日志" @click="openKnowledgeShare('logs', activeLog.id, activeLog.title)"><Share2 :size="16" /><span>分享</span></button>
                 <button class="detail-toolbar-button" type="button" :aria-label="activeLog.pinned ? '取消置顶日志' : '置顶日志'" @click="togglePinned(activeLog)"><Pin :size="16" /><span>{{ activeLog.pinned ? '取消置顶' : '置顶' }}</span></button>
                 <button class="detail-toolbar-button" type="button" aria-label="编辑日志" @click="openLogEditor(activeLog)"><Edit3 :size="16" /><span>编辑日志</span></button>
               </div>
@@ -899,7 +917,7 @@ onDeactivated(() => emit('editing-change', false))
                       </button>
                     </div></Transition>
                   </div>
-                  <button class="filter-button" :class="{ active: favoriteOnly }" :aria-pressed="favoriteOnly" type="button" @click="favoriteOnly = !favoriteOnly"><Heart :size="16" :fill="favoriteOnly ? 'currentColor' : 'none'" />收藏 / 置顶</button>
+                  <button class="filter-button" :class="{ active: favoriteOnly }" :aria-pressed="favoriteOnly" type="button" @click="toggleFeaturedOnly"><Heart :size="16" :fill="favoriteOnly ? 'currentColor' : 'none'" />收藏 / 置顶</button>
                   <div v-if="typeFilter === 'logs'" class="category-filters"><button type="button" :class="{ active: categoryFilter === 'ALL' }" @click="categoryFilter = 'ALL'">全部</button><button v-for="(meta, value) in categoryMeta" :key="value" type="button" :class="{ active: categoryFilter === value }" @click="categoryFilter = value">{{ meta.label }}</button></div>
                   <button class="utility-button" type="button" @click="openTrash()"><Trash2 :size="15" />回收站</button>
                   <button class="utility-button" type="button" @click="markdownWorkspace?.triggerImport()"><Upload :size="15" />导入文章</button>
@@ -944,6 +962,14 @@ onDeactivated(() => emit('editing-change', false))
       </section>
     </div>
 
+    <KnowledgeShareDialog
+      v-if="shareTarget"
+      :kind="shareTarget.kind"
+      :resource-id="shareTarget.id"
+      :resource-title="shareTarget.title"
+      @close="shareTarget = null"
+    />
+
     <Teleport to="body">
       <div v-if="rowActionMenu" class="row-menu-layer" role="presentation" @pointerdown.self="rowActionMenu = null" @contextmenu.prevent.self="rowActionMenu = null">
         <div class="row-action-menu" role="menu" :style="{ left: `${rowActionMenu.x}px`, top: `${rowActionMenu.y}px` }" @keydown.esc.stop="rowActionMenu = null">
@@ -954,6 +980,7 @@ onDeactivated(() => emit('editing-change', false))
             {{ rowActionMenu.item.type === 'logs' ? (rowActionMenu.item.featured ? '取消置顶' : '置顶到列表前方') : (rowActionMenu.item.featured ? '取消收藏' : '收藏并移到列表前方') }}
           </button>
           <button v-if="rowActionMenu.item.type === 'snippets'" type="button" role="menuitem" @click="copyCode(rowActionMenu.item.source); rowActionMenu = null"><Clipboard :size="16" />复制代码</button>
+          <button v-if="rowActionMenu.item.type !== 'documents'" type="button" role="menuitem" @click="openKnowledgeShare(rowActionMenu.item.type, rowActionMenu.item.id, rowActionMenu.item.title)"><Share2 :size="16" />分享{{ typeMeta[rowActionMenu.item.type].label }}</button>
           <button type="button" role="menuitem" @click="editKnowledgeItem(rowActionMenu.item)"><Edit3 :size="16" />编辑{{ typeMeta[rowActionMenu.item.type].label }}</button>
           <span class="row-action-menu__divider"></span>
           <button class="danger" type="button" role="menuitem" @click="removeKnowledgeItem(rowActionMenu.item)"><Trash2 :size="16" />移入回收站</button>

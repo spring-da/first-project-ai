@@ -8,6 +8,8 @@ import com.springda.devnest.config.AppProperties;
 import com.springda.devnest.image.ImageStorage;
 import com.springda.devnest.image.MarkdownImageRepository;
 import com.springda.devnest.community.CommunityMessageRepository;
+import com.springda.devnest.profile.ProfileRepository;
+import com.springda.devnest.share.KnowledgeShareRepository;
 import com.springda.devnest.user.UserEntity;
 import com.springda.devnest.user.UserRepository;
 import com.springda.devnest.user.UserRole;
@@ -31,6 +33,8 @@ public class AdminService {
     private final PasswordEncoder passwordEncoder;
     private final MarkdownImageRepository images;
     private final CommunityMessageRepository communityMessages;
+    private final KnowledgeShareRepository knowledgeShares;
+    private final ProfileRepository profiles;
     private final ImageStorage imageStorage;
     private final AccountCredentialService credentials;
     private final AppProperties properties;
@@ -42,6 +46,8 @@ public class AdminService {
             PasswordEncoder passwordEncoder,
             MarkdownImageRepository images,
             CommunityMessageRepository communityMessages,
+            KnowledgeShareRepository knowledgeShares,
+            ProfileRepository profiles,
             ImageStorage imageStorage,
             AccountCredentialService credentials,
             AppProperties properties,
@@ -52,6 +58,8 @@ public class AdminService {
         this.passwordEncoder = passwordEncoder;
         this.images = images;
         this.communityMessages = communityMessages;
+        this.knowledgeShares = knowledgeShares;
+        this.profiles = profiles;
         this.imageStorage = imageStorage;
         this.credentials = credentials;
         this.properties = properties;
@@ -178,7 +186,10 @@ public class AdminService {
         var objectKeys = new ArrayList<>(images.findAllByOwnerId(userId).stream()
                 .map(image -> image.getObjectKey()).toList());
         objectKeys.addAll(communityMessages.findImageObjectKeysRemovedWithAuthor(userId));
+        profiles.findByOwnerId(userId).map(profile -> profile.getAvatarObjectKey())
+                .filter(java.util.Objects::nonNull).ifPresent(objectKeys::add);
         invitations.deleteByRegisteredUserId(userId);
+        knowledgeShares.deleteAllByOwnerId(userId);
         users.delete(user);
         users.flush();
         audit.record(adminId, admin.getEmail(), userId, targetEmail,

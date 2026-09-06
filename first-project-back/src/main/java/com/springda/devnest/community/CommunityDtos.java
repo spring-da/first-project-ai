@@ -14,6 +14,7 @@ public final class CommunityDtos {
             String parentId,
             String authorId,
             String authorName,
+            String authorAvatarUrl,
             UserRole authorRole,
             String content,
             String imageUrl,

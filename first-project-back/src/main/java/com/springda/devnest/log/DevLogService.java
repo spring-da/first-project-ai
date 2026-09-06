@@ -2,6 +2,8 @@ package com.springda.devnest.log;
 
 import com.springda.devnest.common.NotFoundException;
 import com.springda.devnest.knowledge.KnowledgeDomainService;
+import com.springda.devnest.share.KnowledgeResourceType;
+import com.springda.devnest.share.KnowledgeShareRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,10 +16,16 @@ public class DevLogService {
 
     private final DevLogRepository logs;
     private final KnowledgeDomainService domains;
+    private final KnowledgeShareRepository shares;
 
-    public DevLogService(DevLogRepository logs, KnowledgeDomainService domains) {
+    public DevLogService(
+            DevLogRepository logs,
+            KnowledgeDomainService domains,
+            KnowledgeShareRepository shares
+    ) {
         this.logs = logs;
         this.domains = domains;
+        this.shares = shares;
     }
 
     @Transactional(readOnly = true)
@@ -72,7 +80,9 @@ public class DevLogService {
 
     @Transactional
     public void purge(String ownerId, String id) {
-        logs.delete(find(ownerId, id, true));
+        var log = find(ownerId, id, true);
+        shares.deleteAllByResourceTypeAndResourceIdAndOwnerId(KnowledgeResourceType.DEV_LOG, id, ownerId);
+        logs.delete(log);
     }
 
     @Transactional

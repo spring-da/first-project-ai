@@ -2,7 +2,7 @@
 
 Base URL：`http://localhost:8080/api/v1`
 
-除注册、登录和健康检查外，所有接口都需要：
+除注册、登录、昵称可用性检查和健康检查外，所有接口都需要：
 
 ```http
 Authorization: Bearer <accessToken>
@@ -25,7 +25,15 @@ POST /auth/register
 }
 ```
 
-注册采用一次性邀请 Token：管理员通过 `POST /admin/invitations` 添加邮箱后，将响应中的 Token 组成邀请链接并通过可信渠道交给用户。Token 默认 48 小时有效、只能成功使用一次，数据库只保存 SHA-256 摘要。注册接口不接收邮箱，而是从 Token 对应的邀请中确定邮箱；无效、过期、已使用以及对应邮箱已经注册都统一返回 `400 Bad Request` 和相同提示，避免公开枚举邀请及账号状态。
+注册采用一次性邀请 Token：管理员通过 `POST /admin/invitations` 添加邮箱后，将响应中的 Token 组成邀请链接并通过可信渠道交给用户。Token 默认 48 小时有效、只能成功使用一次，数据库只保存 SHA-256 摘要。注册接口不接收邮箱，而是从 Token 对应的邀请中确定邮箱；无效、过期、已使用以及对应邮箱已经注册都统一返回 `400 Bad Request` 和相同提示，避免公开枚举邀请及账号状态。昵称会执行 Unicode 规范化、去除首尾空白并忽略大小写查重；冲突返回 `409 Conflict`。
+
+注册页可在提交前检查昵称：
+
+```http
+GET /auth/display-name-availability?displayName=springda
+```
+
+响应为 `{ "available": true }`。该结果只用于即时提示，注册事务仍会再次检查唯一约束，避免并发抢占。
 
 ### 登录
 
@@ -160,16 +168,16 @@ JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码�
 
 ## 系统公告
 
-管理员发布公告时提交：
+管理员发布公告时提交，`content` 使用 Markdown：
 
 ```json
 {
   "title": "知识库功能升级",
-  "content": "本次更新增加了历史恢复和意见交流功能。"
+  "content": "## 本次更新\n\n- 增加历史恢复\n- 优化意见交流图片加载\n\n[查看使用说明](https://example.com/docs)"
 }
 ```
 
-成员使用 `GET /announcements/unread` 获取尚未阅读的有效公告。Web 客户端进入登录后的主界面时自动读取并逐条弹出；用户确认后调用 `POST /announcements/{announcementId}/read`，服务端为当前真实登录账号保存已读状态，之后登录不再重复提示。`GET /announcements?limit=10` 返回有效公告历史。管理员账号不显示成员公告弹窗；撤回公告后，尚未阅读的成员也不会再收到该公告。
+成员使用 `GET /announcements/unread` 获取尚未阅读的有效公告。Web 客户端使用与知识库一致的安全渲染器展示标题、列表、引用、代码、表格和链接，原始 HTML 会被转义。进入登录后的主界面时自动读取并逐条弹出；用户确认后调用 `POST /announcements/{announcementId}/read`，服务端为当前真实登录账号保存已读状态，之后登录不再重复提示。`GET /announcements?limit=10` 返回有效公告历史。管理员账号不显示成员公告弹窗；撤回公告后，尚未阅读的成员也不会再收到该公告。
 
 ## 意见交流
 
@@ -184,7 +192,7 @@ JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码�
 | 读取图片 | `GET /community/messages/{messageId}/image` | Bearer Token 鉴权后的图片字节 |
 | 删除消息 | `DELETE /community/messages/{messageId}` | 作者可删除自己的消息，管理员可管理任意消息 |
 
-正文最长 2000 字符。图片最大 20 MB，只接受根据文件字节识别出的 PNG、JPG、GIF 或 WebP，不接受 SVG；对象保存在现有私有 OSS 下，消息响应只返回稳定的后端图片地址。删除主题会同时删除其回复，数据库事务提交后清理对应 OSS 对象。主题列表默认加载 8 条并使用游标继续加载，回复默认折叠，仅在用户展开后请求。
+正文最长 2000 字符。图片最大 20 MB，只接受根据文件字节识别出的 PNG、JPG、GIF 或 WebP，不接受 SVG；对象保存在现有私有 OSS 下，消息响应返回相对于 API Base URL 的稳定地址，例如 `/community/messages/{id}/image`，客户端读取时携带 Bearer Token。删除主题会同时删除其回复，数据库事务提交后清理对应 OSS 对象。主题列表默认加载 8 条并使用游标继续加载，回复默认折叠，仅在用户展开后请求。响应还包含作者的 `authorAvatarUrl`；Web 客户端会把 HTTP(S) 链接渲染为安全的可点击链接，在图片接近可视区域时才异步读取 Blob，并在上传前把较大的静态图片缩放、转换为 WebP 以减少等待时间，GIF 保持原格式。
 
 ## 资源接口
 
@@ -196,11 +204,11 @@ JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码�
 | Markdown 文章 | `GET /markdown-documents` | `POST /markdown-documents` | `PUT /markdown-documents/{id}` | `DELETE /markdown-documents/{id}` |
 | 代码片段 | `GET /snippets` | `POST /snippets` | `PUT /snippets/{id}` | `DELETE /snippets/{id}` |
 | 开发日志 | `GET /logs` | `POST /logs` | `PUT /logs/{id}` | `DELETE /logs/{id}` |
-| 个人资料 | `GET /profile` | — | `PUT /profile` | — |
+| 个人资料 | `GET /profile` | `POST /profile/avatar` | `PUT /profile` | `DELETE /profile/avatar` |
 
 普通成员的所有查询都使用 JWT 中的用户 ID 过滤数据，不能指定 `ownerId`；只有服务端重新确认当前身份为管理员后，才会接受 `X-Workspace-Owner` 代管目标。
 
-资料中的 `avatarUrl` 允许为空；非空时必须是合法的 `http://` 或 `https://` 地址，服务端不会接受脚本协议或带账号凭据的 URL。
+资料中的 `gender` 可为 `MALE`、`FEMALE`、`OTHER` 或 `null`，新注册用户默认为 `null`。未上传头像时，Web 客户端根据用户 ID 和昵称生成稳定的默认头像。`POST /profile/avatar` 使用名为 `file` 的 multipart 字段，最大 5 MB，只接受按文件字节识别出的 PNG、JPG、GIF 或 WebP；响应中的内部 `avatarUrl` 形如 `/user-avatars/{ownerId}`，通过 `GET /user-avatars/{ownerId}` 鉴权读取。`DELETE /profile/avatar` 删除私有 OSS 对象并恢复默认头像。旧数据中的外部 `avatarUrl` 仍兼容合法的 `http://` 或 `https://` 地址，服务端不会接受脚本协议或带账号凭据的 URL。
 
 任务响应包含 `scheduledDate`（本地日历日期）、`dueAt`（UTC 时间点）、`priority`（`LOW` / `NORMAL` / `HIGH` / `URGENT`）、`completedAt` 和 `archived`。创建请求示例：
 
@@ -219,6 +227,8 @@ JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码�
 删除知识领域不会删除片段或日志，已有内容会自动回到“未分类”。删除代码片段或开发日志（`DELETE /snippets/{id}`、`DELETE /logs/{id}`）现在改为移入回收站，普通列表不再返回；恢复用 `POST /snippets/{id}/restore`、`POST /logs/{id}/restore`，彻底删除（只能作用于已在回收站的内容）用 `DELETE /snippets/{id}/permanent`、`DELETE /logs/{id}/permanent`，回收站列表为 `GET /snippets/trash`、`GET /logs/trash`（按删除时间倒序，返回 `id/title/语言或类型/excerpt/domainId/deletedAt`）。回收站内容不会自动清空；恢复时若原目录已被删除，内容会自动回到“未分类”。
 
 Markdown 批量导入使用 `POST /markdown-documents/import`（JSON 或 Markdown/ZIP multipart），批量调整目录使用 `PATCH /markdown-documents/bulk-domain`，带图片的可移植 ZIP 导出使用 `POST /markdown-documents/export`。文章所有者还可以通过 `POST /markdown-documents/{id}/shares` 创建带有效期的公开只读链接，通过 `GET /markdown-documents/{id}/shares` 查看记录，并用 `DELETE /markdown-documents/{id}/shares/{shareId}` 撤销；访客使用无需登录的 `GET /public/markdown-shares/{token}` 阅读。请求格式、安全边界与图片分享说明参见 [MARKDOWN_API.md](MARKDOWN_API.md)。
+
+代码片段和开发日志使用相同的限时分享规则。所有者分别通过 `POST /snippets/{id}/shares` 或 `POST /logs/{id}/shares` 创建链接，通过对应的 `GET` 地址查看历史，并使用 `DELETE /snippets/{id}/shares/{shareId}` 或 `DELETE /logs/{id}/shares/{shareId}` 撤销。访客通过无需登录的 `GET /public/knowledge-shares/{token}` 读取只读内容。服务端只保存令牌的 SHA-256 摘要，明文令牌只在创建响应中返回一次；资源进入回收站、链接过期或被撤销后会立即停止公开访问。
 
 统一知识列表可通过 `PATCH /knowledge-items/bulk-domain` 将文章、代码片段和开发日志批量移动到同一目录。一次最多提交 100 条，三类资源都会按 JWT 所有者校验；目标目录不存在、任一内容不存在或文章版本冲突时，整批事务回滚。文章必须提交 `expectedVersion`，代码片段和日志可省略：
 

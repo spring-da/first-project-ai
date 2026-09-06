@@ -3,6 +3,8 @@ package com.springda.devnest.profile;
 import com.springda.devnest.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
 @Entity
@@ -24,6 +26,19 @@ public class ProfileEntity extends BaseEntity {
     @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
 
+    @Enumerated(EnumType.STRING)
+    @Column(length = 16)
+    private ProfileGender gender;
+
+    @Column(name = "avatar_object_key", length = 512)
+    private String avatarObjectKey;
+
+    @Column(name = "avatar_content_type", length = 32)
+    private String avatarContentType;
+
+    @Column(name = "avatar_size_bytes")
+    private Long avatarSizeBytes;
+
     protected ProfileEntity() {
     }
 
@@ -42,11 +57,26 @@ public class ProfileEntity extends BaseEntity {
                 "用代码记录成长，把想法构建成作品。");
     }
 
-    public void update(String name, String role, String bio, String avatarUrl) {
+    public void update(String name, String role, String bio, String avatarUrl, ProfileGender gender) {
         this.name = name;
         this.role = role;
         this.bio = bio;
         this.avatarUrl = avatarUrl;
+        this.gender = gender;
+    }
+
+    public void setUploadedAvatar(String objectKey, String contentType, long sizeBytes) {
+        this.avatarUrl = null;
+        this.avatarObjectKey = objectKey;
+        this.avatarContentType = contentType;
+        this.avatarSizeBytes = sizeBytes;
+    }
+
+    public void clearAvatar() {
+        this.avatarUrl = null;
+        this.avatarObjectKey = null;
+        this.avatarContentType = null;
+        this.avatarSizeBytes = null;
     }
 
     public String getOwnerId() {
@@ -67,5 +97,25 @@ public class ProfileEntity extends BaseEntity {
 
     public String getAvatarUrl() {
         return avatarUrl;
+    }
+
+    public ProfileGender getGender() {
+        return gender;
+    }
+
+    public String getAvatarObjectKey() {
+        return avatarObjectKey;
+    }
+
+    public String getAvatarContentType() {
+        return avatarContentType;
+    }
+
+    public Long getAvatarSizeBytes() {
+        return avatarSizeBytes;
+    }
+
+    public boolean hasUploadedAvatar() {
+        return avatarObjectKey != null;
     }
 }

@@ -2,16 +2,20 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
+  Archive,
   Ban,
+  BellRing,
   CheckCircle2,
   Clock3,
   Copy,
   Eye,
+  FilePenLine,
   History,
   KeyRound,
   Link2,
   LoaderCircle,
   MailPlus,
+  MessagesSquare,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -22,6 +26,7 @@ import {
 } from 'lucide-vue-next'
 import PageHeader from '../components/PageHeader.vue'
 import AppModal from '../components/AppModal.vue'
+import UserAvatar from '../components/UserAvatar.vue'
 import { useAdminStore } from '../stores/admin'
 import { useConfirmationStore } from '../stores/confirmation'
 import { useNotificationStore } from '../stores/notifications'
@@ -73,6 +78,20 @@ const auditActionLabels = {
   ANNOUNCEMENT_ARCHIVED: '撤回系统公告',
   COMMUNITY_MESSAGE_MODERATED: '管理意见消息',
 } as const
+
+const auditActionIcons: Record<keyof typeof auditActionLabels, typeof History> = {
+  INVITATION_CREATED: MailPlus,
+  INVITATION_ROTATED: Link2,
+  INVITATION_REVOKED: Trash2,
+  ACCOUNT_ENABLED: UserCheck,
+  ACCOUNT_DISABLED: Ban,
+  ACCOUNT_PASSWORD_RESET: KeyRound,
+  ACCOUNT_DELETED: Trash2,
+  MEMBER_WORKSPACE_WRITE: FilePenLine,
+  ANNOUNCEMENT_PUBLISHED: BellRing,
+  ANNOUNCEMENT_ARCHIVED: Archive,
+  COMMUNITY_MESSAGE_MODERATED: MessagesSquare,
+}
 
 const resourceLabels: Record<string, string> = {
   tasks: '任务', projects: '项目', domains: '知识目录', 'knowledge-items': '知识条目',
@@ -306,9 +325,11 @@ onMounted(() => load())
 
       <div v-if="admin.loading && !admin.accounts.length" class="account-state"><LoaderCircle class="spin" :size="22" />正在加载人员名单…</div>
       <div v-else-if="!visibleAccounts.length" class="account-state">没有符合条件的人员记录。</div>
-      <TransitionGroup v-else name="list" tag="div" class="account-list">
+      <template v-else>
+        <div class="account-list-heading" aria-hidden="true"><span></span><span>成员</span><span>状态</span><span>可用操作</span></div>
+        <TransitionGroup name="list" tag="div" class="account-list">
         <article v-for="account in visibleAccounts" :key="account.userId || account.invitationId || account.email" class="account-row" :class="{ disabled: account.registered && !account.enabled }">
-          <div class="account-avatar" :class="{ pending: !account.registered, admin: account.role === 'ADMIN' }">{{ account.displayName?.charAt(0).toUpperCase() || account.email.charAt(0).toUpperCase() }}</div>
+          <UserAvatar class="account-avatar" :name="account.displayName || account.email" :seed="account.userId || account.email" />
           <div class="account-identity"><strong>{{ account.displayName || '等待注册' }}</strong><span>{{ account.email }}</span><small>{{ account.registered ? `注册于 ${formatDate(account.registeredAt)}` : account.invitationExpired ? `邀请已过期 · 创建于 ${formatDate(account.invitedAt)}` : `有效至 ${formatDate(account.invitationExpiresAt)}` }}</small></div>
           <div class="account-status">
             <span v-if="account.role === 'ADMIN'" class="status admin"><ShieldCheck :size="13" />管理员</span>
@@ -332,7 +353,8 @@ onMounted(() => load())
             </template>
           </div>
         </article>
-      </TransitionGroup>
+        </TransitionGroup>
+      </template>
     </section>
 
     <section class="audit-panel">
@@ -345,7 +367,7 @@ onMounted(() => load())
       <div v-else-if="!admin.auditEvents.length" class="audit-state"><History :size="19" />尚无管理员操作记录。</div>
       <div v-else class="audit-list">
         <article v-for="event in visibleAuditEvents" :key="event.id" :title="event.requestPath">
-          <span class="audit-result" :class="{ failed: !event.success }"><CheckCircle2 v-if="event.success" :size="16" /><Ban v-else :size="16" /></span>
+          <span class="audit-result" :class="{ failed: !event.success }"><component :is="auditActionIcons[event.action]" :size="17" /></span>
           <div><strong>{{ auditTitle(event.action, event.resourceType, event.httpMethod) }}</strong><span>{{ event.actorEmail }} → {{ event.targetLabel || event.targetId || '系统' }}</span></div>
           <small>{{ event.success ? '成功' : `失败 · HTTP ${event.responseStatus}` }}</small>
           <time :datetime="event.createdAt">{{ formatDate(event.createdAt) }}</time>
@@ -398,20 +420,21 @@ onMounted(() => load())
 .filters button:active { transform: scale(.96); }
 .filters button.active { color: var(--accent); background: var(--accent-bg); }
 .account-list { padding: 5px 14px; }
+.account-list-heading { display: grid; grid-template-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) minmax(300px, auto); gap: 14px; padding: 9px 22px; color: var(--muted); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-sunken) 72%, transparent); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.account-list-heading span:nth-child(3) { padding-left: 8px; }
+.account-list-heading span:last-child { text-align: right; }
 .account-row { display: grid; grid-template-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) minmax(300px, auto); align-items: center; gap: 14px; min-height: 86px; padding: 12px 8px; border-bottom: 1px solid var(--border); transition: background var(--motion-fast), opacity var(--motion-base), transform var(--motion-slow) var(--ease-emphasized); }
 .account-row:hover { background: color-mix(in srgb, var(--surface-raised) 62%, transparent); }
 .account-row:last-child { border-bottom: 0; }
 .account-row.disabled { opacity: .76; }
-.account-avatar { width: 39px; height: 39px; display: grid; place-items: center; color: var(--accent-contrast); border-radius: 11px; background: var(--accent); font-weight: 800; }
-.account-avatar.pending { color: var(--muted); background: var(--surface-raised); border: 1px dashed var(--border-strong); }
-.account-avatar.admin { background: var(--brand); }
+.account-avatar { width: 39px; height: 39px; border-radius: 11px; }
 .account-identity { min-width: 0; }
 .account-identity strong, .account-identity span, .account-identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-identity strong { font-size: var(--font-sm); }
 .account-identity span { margin-top: 3px; color: var(--subtle); font-size: var(--font-xs); }
 .account-identity small { margin-top: 4px; color: var(--muted); font-size: var(--font-2xs); }
-.account-status { display: flex; flex-wrap: wrap; gap: 6px; }
-.status { display: inline-flex; align-items: center; gap: 5px; width: max-content; padding: 5px 8px; border-radius: 99px; font-size: var(--font-2xs); }
+.account-status { min-height: 30px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding-left: 8px; }
+.status { min-width: 88px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 8px; border-radius: 99px; font-size: var(--font-2xs); }
 .status.enabled { color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); }
 .status.pending, .status.password { color: var(--warning); background: color-mix(in srgb, var(--warning) 10%, transparent); }
 .status.disabled { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
@@ -429,9 +452,10 @@ onMounted(() => load())
 .audit-panel header span { display: block; margin-top: 6px; color: var(--muted); font-size: var(--font-xs); }
 .audit-state { min-height: 112px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: var(--font-sm); }
 .audit-list { padding: 4px 14px; }
-.audit-list article { min-height: 65px; display: grid; grid-template-columns: 32px minmax(260px, 1fr) 110px 155px; align-items: center; gap: 12px; padding: 9px 8px; border-bottom: 1px solid var(--border); }
-.audit-result { width: 30px; height: 30px; display: grid; place-items: center; color: var(--success); border-radius: 8px; background: color-mix(in srgb, var(--success) 10%, transparent); }
-.audit-result.failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, transparent); }
+.audit-list article { min-height: 68px; display: grid; grid-template-columns: 42px minmax(260px, 1fr) 110px 155px; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+.audit-result { width: 38px; height: 38px; display: grid; place-items: center; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(145deg, var(--accent-bg), var(--panel)); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 45%, transparent); line-height: 0; }
+.audit-result :deep(svg) { display: block; margin: 0; }
+.audit-result.failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 22%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--panel)); }
 .audit-list article div { min-width: 0; }
 .audit-list article strong, .audit-list article span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-list article strong { font-size: var(--font-xs); }
@@ -451,7 +475,7 @@ onMounted(() => load())
 .secret-warning { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0 0; color: var(--warning); font-size: var(--font-xs); line-height: 1.55; }
 .secret-warning svg { flex-shrink: 0; }
 .secret-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
-@media (min-width: 1800px) { .admin-overview { grid-template-columns: repeat(3, minmax(200px, .75fr)) minmax(420px, 1.5fr); gap: 16px; } .invite-panel, .accounts-panel > header { padding-inline: 28px; } .account-list { padding-inline: 20px; } .account-row { grid-template-columns: 43px minmax(300px, 1.25fr) minmax(220px, .65fr) minmax(340px, auto); column-gap: 20px; } }
-@media (max-width: 1100px) { .admin-overview { grid-template-columns: repeat(3, 1fr); } .admin-overview > p { grid-column: 1 / -1; min-height: auto; } .accounts-panel > header { align-items: stretch; flex-direction: column; } .account-tools { justify-content: space-between; } .account-row { grid-template-columns: 43px 1fr auto; } .account-status { justify-content: flex-end; } .account-actions { grid-column: 2 / -1; justify-content: flex-start; } }
+@media (min-width: 1800px) { .admin-overview { grid-template-columns: repeat(3, minmax(200px, .75fr)) minmax(420px, 1.5fr); gap: 16px; } .invite-panel, .accounts-panel > header { padding-inline: 28px; } .account-list { padding-inline: 20px; } .account-list-heading, .account-row { grid-template-columns: 43px minmax(300px, 1.25fr) minmax(220px, .65fr) minmax(340px, auto); column-gap: 20px; } }
+@media (max-width: 1100px) { .admin-overview { grid-template-columns: repeat(3, 1fr); } .admin-overview > p { grid-column: 1 / -1; min-height: auto; } .accounts-panel > header { align-items: stretch; flex-direction: column; } .account-tools { justify-content: space-between; } .account-list-heading { display: none; } .account-row { grid-template-columns: 43px 1fr auto; } .account-status { justify-content: flex-end; } .account-actions { grid-column: 2 / -1; justify-content: flex-start; } }
 @media (max-width: 720px) { .admin-overview { grid-template-columns: repeat(3, 1fr); gap: 7px; } .admin-overview > div { min-width: 0; min-height: 105px; padding: 13px 10px; } .admin-overview > div small { font-size: 10px; } .admin-overview > p { grid-column: 1 / -1; padding: 14px; } .invite-panel { align-items: stretch; flex-direction: column; gap: 17px; padding: 19px; } .invite-panel form { width: 100%; grid-template-columns: 1fr; } .account-tools { align-items: stretch; flex-direction: column; } .account-search { width: 100%; } .filters { display: grid; grid-template-columns: repeat(4, 1fr); } .filters button { padding-inline: 3px; } .accounts-panel > header { padding: 18px; } .account-list { padding-inline: 10px; } .account-row { grid-template-columns: 39px minmax(0, 1fr); gap: 10px; padding-block: 15px; } .account-status, .account-actions { grid-column: 2; justify-content: flex-start; } .account-actions { flex-wrap: wrap; } .secret-actions { align-items: stretch; flex-direction: column; } .secret-actions .button { justify-content: center; } }
 </style>

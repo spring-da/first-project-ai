@@ -10,6 +10,8 @@ import com.springda.devnest.image.ImageStorage;
 import com.springda.devnest.image.ImageStorageException;
 import com.springda.devnest.image.MarkdownImageService;
 import com.springda.devnest.image.OssProperties;
+import com.springda.devnest.profile.ProfileDtos;
+import com.springda.devnest.profile.ProfileRepository;
 import com.springda.devnest.user.UserEntity;
 import com.springda.devnest.user.UserRepository;
 import com.springda.devnest.user.UserRole;
@@ -39,6 +41,7 @@ public class CommunityMessageService {
 
     private final CommunityMessageRepository messages;
     private final UserRepository users;
+    private final ProfileRepository profiles;
     private final ImageStorage storage;
     private final OssProperties oss;
     private final SaveRateLimiter rateLimiter;
@@ -47,6 +50,7 @@ public class CommunityMessageService {
     public CommunityMessageService(
             CommunityMessageRepository messages,
             UserRepository users,
+            ProfileRepository profiles,
             ImageStorage storage,
             OssProperties oss,
             SaveRateLimiter rateLimiter,
@@ -54,6 +58,7 @@ public class CommunityMessageService {
     ) {
         this.messages = messages;
         this.users = users;
+        this.profiles = profiles;
         this.storage = storage;
         this.oss = oss;
         this.rateLimiter = rateLimiter;
@@ -117,7 +122,7 @@ public class CommunityMessageService {
                     stored == null ? null : stored.contentType(),
                     stored == null ? null : stored.size()));
             if (stored != null) cleanupObjectIfTransactionRollsBack(stored.objectKey());
-            return response(message, author, 0);
+            return response(message, author, avatarUrl(authorId), 0, author);
         } catch (RuntimeException exception) {
             if (stored != null) deleteAfterFailedUpload(stored.objectKey());
             throw exception;
@@ -164,6 +169,7 @@ public class CommunityMessageService {
     ) {
         if (entities.isEmpty()) return List.of();
         var authors = authorMap(entities);
+        var avatars = avatarMap(entities);
         var rootIds = entities.stream().filter(entity -> entity.getParentId() == null)
                 .map(CommunityMessageEntity::getId).toList();
         var replyCounts = new HashMap<String, Long>();
@@ -172,30 +178,24 @@ public class CommunityMessageService {
                     replyCounts.put(count.getParentId(), count.getReplyCount()));
         }
         return entities.stream().map(entity -> response(
-                entity, authors.get(entity.getAuthorId()), replyCounts.getOrDefault(entity.getId(), 0L), viewer)).toList();
+                entity, authors.get(entity.getAuthorId()), avatars.get(entity.getAuthorId()),
+                replyCounts.getOrDefault(entity.getId(), 0L), viewer)).toList();
     }
 
     private CommunityDtos.MessageResponse response(
             CommunityMessageEntity entity,
             UserEntity author,
+            String authorAvatarUrl,
             long replyCount,
             UserEntity viewer
     ) {
         var authorName = author == null ? "已删除用户" : author.getDisplayName();
         var authorRole = author == null ? UserRole.USER : author.getRole();
         return new CommunityDtos.MessageResponse(
-                entity.getId(), entity.getParentId(), entity.getAuthorId(), authorName, authorRole,
-                entity.getContent(), entity.hasImage() ? "/api/v1/community/messages/" + entity.getId() + "/image" : null,
+                entity.getId(), entity.getParentId(), entity.getAuthorId(), authorName, authorAvatarUrl, authorRole,
+                entity.getContent(), entity.hasImage() ? "/community/messages/" + entity.getId() + "/image" : null,
                 replyCount, viewer.getRole() == UserRole.ADMIN || viewer.getId().equals(entity.getAuthorId()),
                 entity.getCreatedAt());
-    }
-
-    private CommunityDtos.MessageResponse response(
-            CommunityMessageEntity entity,
-            UserEntity author,
-            long replyCount
-    ) {
-        return response(entity, author, replyCount, author);
     }
 
     private Map<String, UserEntity> authorMap(Collection<CommunityMessageEntity> entities) {
@@ -203,6 +203,18 @@ public class CommunityMessageService {
         var result = new HashMap<String, UserEntity>();
         users.findAllById(ids).forEach(user -> result.put(user.getId(), user));
         return result;
+    }
+
+    private Map<String, String> avatarMap(Collection<CommunityMessageEntity> entities) {
+        var ids = entities.stream().map(CommunityMessageEntity::getAuthorId).distinct().toList();
+        var result = new HashMap<String, String>();
+        profiles.findAllByOwnerIdIn(ids).forEach(profile ->
+                result.put(profile.getOwnerId(), ProfileDtos.avatarUrl(profile)));
+        return result;
+    }
+
+    private String avatarUrl(String authorId) {
+        return profiles.findByOwnerId(authorId).map(ProfileDtos::avatarUrl).orElse(null);
     }
 
     private CommunityMessageEntity requireRoot(String messageId) {

@@ -5,6 +5,7 @@ export const router = createRouter({
   scrollBehavior: () => ({ top: 0 }),
   routes: [
     { path: '/share/markdown/:token', name: 'public-markdown-share', component: () => import('../views/PublicMarkdownShareView.vue') },
+    { path: '/share/knowledge/:token', name: 'public-knowledge-share', component: () => import('../views/PublicKnowledgeShareView.vue') },
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { guestOnly: true } },
     { path: '/change-password', name: 'change-password', component: () => import('../views/ChangePasswordView.vue'), meta: { requiresAuth: true } },
     { path: '/admin/accounts/:userId/workspace', name: 'admin-member-workspace', redirect: (to) => ({ path: '/', query: { workspace: to.params.userId } }), meta: { requiresAuth: true, adminOnly: true } },
@@ -16,6 +17,7 @@ export const router = createRouter({
         { path: '', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { keepAlive: true } },
         { path: 'projects', name: 'projects', component: () => import('../views/ProjectsView.vue'), meta: { keepAlive: true } },
         { path: 'knowledge', name: 'knowledge', component: () => import('../views/KnowledgeView.vue'), meta: { keepAlive: true } },
+        { path: 'announcements', name: 'announcements', component: () => import('../views/AnnouncementsView.vue'), meta: { keepAlive: true } },
         { path: 'messages', name: 'messages', component: () => import('../views/MessageCenterView.vue'), meta: { keepAlive: true } },
         { path: 'tools', name: 'tools', component: () => import('../views/ToolsView.vue'), meta: { keepAlive: true } },
         { path: 'profile', name: 'profile', component: () => import('../views/ProfileView.vue'), meta: { keepAlive: true } },

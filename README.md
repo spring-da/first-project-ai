@@ -2,8 +2,8 @@
 
 Vue 3 + TypeScript 前端和 Spring Boot + Java 26 后端，统一存放在此仓库。
 
-- `first-project-web/`：工作台、任务、项目、Markdown、代码片段、开发日志、消息中心、系统工具和人员管理。
-- `first-project-back/`：JWT 认证、邀请注册、账号隔离、数据 API、系统公告、意见交流、历史版本、回收站和 OSS 图片。
+- `first-project-web/`：工作台、任务、项目、Markdown、代码片段、开发日志、系统公告、意见交流、系统工具和人员管理。
+- `first-project-back/`：JWT 认证、邀请注册、账号隔离、数据 API、系统公告、意见交流、历史版本、回收站、公开只读分享和 OSS 图片。
 
 ## 管理员管理成员数据
 
@@ -51,6 +51,6 @@ mvn -B -ntp verify
 docker compose --project-directory first-project-back -f first-project-back/compose.yml up -d --build
 ```
 
-本次功能需要前后端一起更新；Flyway 会自动执行到 V14，创建系统公告、公告已读状态和意见交流消息表。前端访问端口为 8000。
+本次功能需要前后端一起更新；Flyway 会自动执行到 V16，在 V14 的公告与意见交流表、V15 的昵称与头像资料之外，增加代码片段和开发日志的安全分享链接。前端访问端口为 8000。
 
 接口契约见 [API 文档](first-project-back/docs/API.md)。

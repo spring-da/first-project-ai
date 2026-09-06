@@ -16,6 +16,7 @@ export const router = createRouter({
         { path: '', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { keepAlive: true } },
         { path: 'projects', name: 'projects', component: () => import('../views/ProjectsView.vue'), meta: { keepAlive: true } },
         { path: 'knowledge', name: 'knowledge', component: () => import('../views/KnowledgeView.vue'), meta: { keepAlive: true } },
+        { path: 'messages', name: 'messages', component: () => import('../views/MessageCenterView.vue'), meta: { keepAlive: true } },
         { path: 'tools', name: 'tools', component: () => import('../views/ToolsView.vue'), meta: { keepAlive: true } },
         { path: 'profile', name: 'profile', component: () => import('../views/ProfileView.vue'), meta: { keepAlive: true } },
         { path: 'admin/accounts', name: 'admin-accounts', component: () => import('../views/AdminAccountsView.vue'), meta: { adminOnly: true } },

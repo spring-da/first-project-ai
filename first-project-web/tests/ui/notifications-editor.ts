@@ -13,7 +13,7 @@ import { useAuthStore } from '../../src/stores/auth'
 import { useWorkspaceStore } from '../../src/stores/workspace'
 import { localDateKey } from '../../src/utils/tasks'
 import { installWheelScrollChaining } from '../../src/utils/scrollChaining'
-import type { CodeSnippet, DevLogEntry, DevProject, DevTask, KnowledgeDomain } from '../../src/types'
+import type { AuthUser, CodeSnippet, CommunityMessage, DevLogEntry, DevProject, DevTask, KnowledgeDomain, SystemAnnouncement } from '../../src/types'
 import '../../src/style.css'
 
 installWheelScrollChaining()
@@ -50,7 +50,7 @@ const sampleContext = sampleCanvas.getContext('2d')!
 sampleContext.fillStyle = '#4267eb'; sampleContext.fillRect(0, 0, 320, 160)
 sampleContext.fillStyle = '#ffffff'; sampleContext.font = '20px sans-serif'; sampleContext.fillText('DevNest image test', 48, 85)
 const sampleImage = await new Promise<Blob>((resolve) => sampleCanvas.toBlob((blob) => resolve(blob!), 'image/png'))
-const fixtureUser = {
+const fixtureUser: AuthUser = {
   id: 'ui-fixture',
   email: 'fixture@example.invalid',
   displayName: '界面回归测试',
@@ -119,6 +119,27 @@ const adminAuditEvents = [
   { id: 'audit-2', actorEmail: 'fixture@example.invalid', targetId: 'fixture-friend', targetLabel: 'friend@example.com', action: 'MEMBER_WORKSPACE_WRITE', resourceType: 'markdown-documents', httpMethod: 'PUT', requestPath: '/api/v1/markdown-documents/fixture-note', responseStatus: 200, success: true, createdAt: now },
   { id: 'audit-1', actorEmail: 'fixture@example.invalid', targetId: 'fixture-disabled', targetLabel: 'disabled@example.com', action: 'ACCOUNT_DISABLED', resourceType: 'accounts', httpMethod: 'PATCH', requestPath: '/api/v1/admin/accounts/fixture-disabled/status', responseStatus: 200, success: true, createdAt: new Date(Date.now() - 60000).toISOString() },
 ]
+let fixtureAnnouncements: SystemAnnouncement[] = [
+  { id: 'announcement-2', title: '意见交流区现已开放', content: '欢迎分享使用建议、遇到的问题和下一步希望增加的功能。\n大家可以回复彼此的消息，也可以附带图片说明。', publisherName: '界面回归测试', active: true, read: false, readCount: 8, publishedAt: now },
+  { id: 'announcement-1', title: '知识库维护完成', content: '文章历史与回收站已经完成一次稳定性更新。', publisherName: '界面回归测试', active: true, read: true, readCount: 17, publishedAt: new Date(Date.now() - 86400000).toISOString() },
+]
+let communitySequence = 20
+let fixtureMessages: CommunityMessage[] = Array.from({ length: 12 }, (_, index) => ({
+  id: `community-${index + 1}`,
+  parentId: null,
+  authorId: index % 3 === 0 ? 'ui-fixture' : `fixture-member-${index}`,
+  authorName: index % 3 === 0 ? '界面回归测试' : `知识库成员 ${index + 1}`,
+  authorRole: index % 3 === 0 ? 'ADMIN' : 'USER',
+  content: index === 0 ? '消息中心的整体体验很清晰，希望后续可以增加消息搜索。' : `这是第 ${index + 1} 条合成意见，用于验证滚动加载和长消息排版。${index % 2 ? '也欢迎大家补充自己的想法。'.repeat(3) : ''}`,
+  imageUrl: index === 1 ? `/api/v1/community/messages/community-${index + 1}/image` : null,
+  replyCount: index === 0 ? 2 : index % 4 === 0 ? 1 : 0,
+  viewerCanDelete: fixtureUser.role === 'ADMIN' || index % 3 === 0,
+  createdAt: new Date(Date.now() - index * 90000).toISOString(),
+}))
+const fixtureReplies = new Map<string, CommunityMessage[]>([['community-1', [
+  { id: 'reply-1', parentId: 'community-1', authorId: 'fixture-friend', authorName: '朋友账户', authorRole: 'USER', content: '赞同，搜索和未读提醒都很实用。', imageUrl: null, replyCount: 0, viewerCanDelete: fixtureUser.role === 'ADMIN', createdAt: new Date(Date.now() - 40000).toISOString() },
+  { id: 'reply-2', parentId: 'community-1', authorId: 'ui-fixture', authorName: '界面回归测试', authorRole: 'ADMIN', content: '已经记录到后续计划中，感谢建议。', imageUrl: null, replyCount: 0, viewerCanDelete: true, createdAt: now },
+]]])
 const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
 const memberData = new Map<string, { tasks: typeof tasks; projects: typeof projects; documents: typeof documents; snippets: typeof snippets; logs: typeof logs; domains: typeof domains; profile: { name: string; role: string; bio: string; avatarUrl: string | null } }>()
 for (const account of adminAccounts.filter((item) => item.userId)) {
@@ -135,6 +156,67 @@ window.fetch = async (input, options = {}) => {
   const scoped = memberData.get(target ?? fixtureUser.id)
   if (target && isWorkspacePath(path) && !scoped) return json({ detail: '测试成员不存在' }, 404)
   const { tasks, projects, documents, snippets, logs, domains, profile } = scoped ?? memberData.get('ui-fixture')!
+
+  if (path.startsWith('/announcements/unread')) {
+    return json(scenario.has('unread-announcement') ? fixtureAnnouncements.filter((item) => !item.read && item.active) : [])
+  }
+  if (path.startsWith('/announcements/') && path.endsWith('/read') && options.method === 'POST') {
+    const id = path.split('/')[2]
+    fixtureAnnouncements = fixtureAnnouncements.map((item) => item.id === id ? { ...item, read: true, readCount: item.readCount + 1 } : item)
+    return new Response(null, { status: 204 })
+  }
+  if (path.startsWith('/announcements?') || path === '/announcements') {
+    return json(fixtureAnnouncements.filter((item) => item.active))
+  }
+  if (path.startsWith('/admin/announcements') && !options.method) return json(fixtureAnnouncements)
+  if (path === '/admin/announcements' && options.method === 'POST') {
+    const body = JSON.parse(String(options.body))
+    const announcement: SystemAnnouncement = { id: `announcement-${Date.now()}`, title: body.title, content: body.content, publisherName: fixtureUser.displayName, active: true, read: false, readCount: 0, publishedAt: new Date().toISOString() }
+    fixtureAnnouncements = [announcement, ...fixtureAnnouncements]
+    return json(announcement, 201)
+  }
+  if (path.startsWith('/admin/announcements/') && options.method === 'DELETE') {
+    const id = path.split('/')[3]
+    fixtureAnnouncements = fixtureAnnouncements.map((item) => item.id === id ? { ...item, active: false } : item)
+    return new Response(null, { status: 204 })
+  }
+  if (path.startsWith('/community/messages')) {
+    const [pathname, query = ''] = path.split('?')
+    const parts = pathname!.split('/')
+    const messageId = parts[3]
+    if (parts[4] === 'image' && !options.method) return new Response(sampleImage, { headers: { 'Content-Type': 'image/png' } })
+    if (parts[4] === 'replies' && !options.method) {
+      const page = Number(new URLSearchParams(query).get('page') ?? 0)
+      const items = fixtureReplies.get(messageId!) ?? []
+      return json({ items: items.slice(page * 10, page * 10 + 10), nextPage: null })
+    }
+    if (parts[4] === 'replies' && options.method === 'POST') {
+      const form = options.body as FormData
+      const reply: CommunityMessage = { id: `community-${++communitySequence}`, parentId: messageId!, authorId: fixtureUser.id, authorName: fixtureUser.displayName, authorRole: fixtureUser.role, content: String(form.get('content') ?? ''), imageUrl: form.get('image') ? `/api/v1/community/messages/community-${communitySequence}/image` : null, replyCount: 0, viewerCanDelete: true, createdAt: new Date().toISOString() }
+      fixtureReplies.set(messageId!, [...(fixtureReplies.get(messageId!) ?? []), reply])
+      fixtureMessages = fixtureMessages.map((item) => item.id === messageId ? { ...item, replyCount: item.replyCount + 1 } : item)
+      return json(reply, 201)
+    }
+    if (messageId && options.method === 'DELETE') {
+      fixtureMessages = fixtureMessages.filter((item) => item.id !== messageId)
+      for (const [rootId, replies] of fixtureReplies) fixtureReplies.set(rootId, replies.filter((item) => item.id !== messageId))
+      return new Response(null, { status: 204 })
+    }
+    if (pathname === '/community/messages' && options.method === 'POST') {
+      const form = options.body as FormData
+      const message: CommunityMessage = { id: `community-${++communitySequence}`, parentId: null, authorId: fixtureUser.id, authorName: fixtureUser.displayName, authorRole: fixtureUser.role, content: String(form.get('content') ?? ''), imageUrl: form.get('image') ? `/api/v1/community/messages/community-${communitySequence}/image` : null, replyCount: 0, viewerCanDelete: true, createdAt: new Date().toISOString() }
+      fixtureMessages = [message, ...fixtureMessages]
+      return json(message, 201)
+    }
+    if (pathname === '/community/messages' && !options.method) {
+      const params = new URLSearchParams(query)
+      const size = Number(params.get('size') ?? 8)
+      const cursor = params.get('cursor')
+      const start = cursor ? fixtureMessages.findIndex((item) => item.id === cursor) + 1 : 0
+      const items = fixtureMessages.slice(start, start + size)
+      return json({ items, nextCursor: start + size < fixtureMessages.length ? items.at(-1)?.id : null })
+    }
+  }
 
   if (path.startsWith('/public/markdown-shares/')) {
     const parts = path.split('/')
@@ -385,7 +467,7 @@ window.addEventListener('devnest:unauthorized', () => {
   useWorkspaceStore(pinia).clear()
   void router.push({ name: 'login' })
 })
-await router.replace(scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('admin') ? '/admin/accounts' : scenario.has('profile') ? '/profile' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : '/knowledge')
+await router.replace(scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('messages') ? '/messages' : scenario.has('admin') ? '/admin/accounts' : scenario.has('profile') ? '/profile' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : '/knowledge')
 app.mount('#app')
 
 const controls = document.createElement('details')

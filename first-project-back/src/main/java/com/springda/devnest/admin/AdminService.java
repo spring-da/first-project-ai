@@ -7,6 +7,7 @@ import com.springda.devnest.auth.AccountCredentialService;
 import com.springda.devnest.config.AppProperties;
 import com.springda.devnest.image.ImageStorage;
 import com.springda.devnest.image.MarkdownImageRepository;
+import com.springda.devnest.community.CommunityMessageRepository;
 import com.springda.devnest.user.UserEntity;
 import com.springda.devnest.user.UserRepository;
 import com.springda.devnest.user.UserRole;
@@ -29,6 +30,7 @@ public class AdminService {
     private final RegistrationInvitationRepository invitations;
     private final PasswordEncoder passwordEncoder;
     private final MarkdownImageRepository images;
+    private final CommunityMessageRepository communityMessages;
     private final ImageStorage imageStorage;
     private final AccountCredentialService credentials;
     private final AppProperties properties;
@@ -39,6 +41,7 @@ public class AdminService {
             RegistrationInvitationRepository invitations,
             PasswordEncoder passwordEncoder,
             MarkdownImageRepository images,
+            CommunityMessageRepository communityMessages,
             ImageStorage imageStorage,
             AccountCredentialService credentials,
             AppProperties properties,
@@ -48,6 +51,7 @@ public class AdminService {
         this.invitations = invitations;
         this.passwordEncoder = passwordEncoder;
         this.images = images;
+        this.communityMessages = communityMessages;
         this.imageStorage = imageStorage;
         this.credentials = credentials;
         this.properties = properties;
@@ -171,9 +175,9 @@ public class AdminService {
         var admin = requireAdmin(adminId);
         var user = manageableUser(userId);
         var targetEmail = user.getEmail();
-        var objectKeys = images.findAllByOwnerId(userId).stream()
-                .map(image -> image.getObjectKey())
-                .toList();
+        var objectKeys = new ArrayList<>(images.findAllByOwnerId(userId).stream()
+                .map(image -> image.getObjectKey()).toList());
+        objectKeys.addAll(communityMessages.findImageObjectKeysRemovedWithAuthor(userId));
         invitations.deleteByRegisteredUserId(userId);
         users.delete(user);
         users.flush();

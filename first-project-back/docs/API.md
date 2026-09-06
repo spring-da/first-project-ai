@@ -106,6 +106,9 @@ POST /auth/logout-all
 | 重置用户密码 | `POST /admin/accounts/{userId}/reset-password` | `200` 一次性临时密码和过期时间 |
 | 永久删除账号 | `DELETE /admin/accounts/{userId}` | `204` |
 | 查看管理员操作记录 | `GET /admin/audit-events?limit=40` | `200` 最近 1–100 条记录 |
+| 查看公告管理记录 | `GET /admin/announcements?limit=20` | `200`，包含已撤回公告与已读人数 |
+| 发布系统公告 | `POST /admin/announcements` | `201` 新公告 |
+| 撤回系统公告 | `DELETE /admin/announcements/{announcementId}` | `204` |
 | 只读查看单个用户工作区 | `GET /admin/accounts/{userId}/workspace` | `200` 用户资料及分模块数据 |
 | 只读查看用户 Markdown 正文 | `GET /admin/accounts/{userId}/workspace/markdown-documents/{documentId}` | `200` |
 | 只读读取用户 Markdown 图片 | `GET /admin/accounts/{userId}/workspace/markdown-images/{imageId}` | `200` 图片字节 |
@@ -154,6 +157,34 @@ POST /auth/logout-all
 JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码都会递增版本，因此操作前签发的全部 JWT 会立即失效。重置密码还会设置 `mustChangePassword=true`。永久删除会通过现有 MySQL 外键级联删除该账号的工作区数据，并撤销其注册资格；若以后需要重新注册，管理员必须再次添加该邮箱。管理员账号不能被禁用、重置或删除。
 
 账号邀请、启用、禁用、密码重置、永久删除，以及管理员通过 `X-Workspace-Owner` 发起的成员数据写操作都会保存审计事件。事件仅包含管理员邮箱、目标、资源类型、HTTP 方法、结果和时间，不记录密码、邀请 Token 或成员正文；列表只允许管理员读取并设置 `Cache-Control: no-store`。
+
+## 系统公告
+
+管理员发布公告时提交：
+
+```json
+{
+  "title": "知识库功能升级",
+  "content": "本次更新增加了历史恢复和意见交流功能。"
+}
+```
+
+成员使用 `GET /announcements/unread` 获取尚未阅读的有效公告。Web 客户端进入登录后的主界面时自动读取并逐条弹出；用户确认后调用 `POST /announcements/{announcementId}/read`，服务端为当前真实登录账号保存已读状态，之后登录不再重复提示。`GET /announcements?limit=10` 返回有效公告历史。管理员账号不显示成员公告弹窗；撤回公告后，尚未阅读的成员也不会再收到该公告。
+
+## 意见交流
+
+意见区对所有已登录账号开放，使用真实登录身份，不受管理员模拟成员工作区的 `X-Workspace-Owner` 影响。
+
+| 功能 | 接口 | 说明 |
+|---|---|---|
+| 滚动读取主题消息 | `GET /community/messages?size=8&cursor={messageId}` | 按发布时间倒序，响应包含 `items` 与下一页 `nextCursor` |
+| 读取回复 | `GET /community/messages/{messageId}/replies?page=0&size=10` | 展开回复时调用，按发布时间正序 |
+| 发布主题 | `POST /community/messages` | `multipart/form-data`，`content` 与 `image` 至少提供一个 |
+| 发布回复 | `POST /community/messages/{messageId}/replies` | 与主题使用相同的 multipart 字段 |
+| 读取图片 | `GET /community/messages/{messageId}/image` | Bearer Token 鉴权后的图片字节 |
+| 删除消息 | `DELETE /community/messages/{messageId}` | 作者可删除自己的消息，管理员可管理任意消息 |
+
+正文最长 2000 字符。图片最大 20 MB，只接受根据文件字节识别出的 PNG、JPG、GIF 或 WebP，不接受 SVG；对象保存在现有私有 OSS 下，消息响应只返回稳定的后端图片地址。删除主题会同时删除其回复，数据库事务提交后清理对应 OSS 对象。主题列表默认加载 8 条并使用游标继续加载，回复默认折叠，仅在用户展开后请求。
 
 ## 资源接口
 

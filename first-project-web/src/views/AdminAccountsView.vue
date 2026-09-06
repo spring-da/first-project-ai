@@ -69,12 +69,16 @@ const auditActionLabels = {
   ACCOUNT_PASSWORD_RESET: '重置成员密码',
   ACCOUNT_DELETED: '永久删除成员',
   MEMBER_WORKSPACE_WRITE: '维护成员数据',
+  ANNOUNCEMENT_PUBLISHED: '发布系统公告',
+  ANNOUNCEMENT_ARCHIVED: '撤回系统公告',
+  COMMUNITY_MESSAGE_MODERATED: '管理意见消息',
 } as const
 
 const resourceLabels: Record<string, string> = {
   tasks: '任务', projects: '项目', domains: '知识目录', 'knowledge-items': '知识条目',
   'markdown-documents': 'Markdown 文章', 'markdown-images': '文章图片', snippets: '代码片段',
   logs: '开发日志', profile: '个人资料', invitations: '注册邀请', accounts: '账户',
+  announcements: '系统公告', 'community-messages': '意见消息',
 }
 
 

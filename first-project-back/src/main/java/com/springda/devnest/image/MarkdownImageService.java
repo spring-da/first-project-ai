@@ -108,7 +108,7 @@ public class MarkdownImageService {
         });
     }
 
-    static String detectFormat(byte[] data) {
+    public static String detectFormat(byte[] data) {
         if (data.length >= 8 && data[0] == (byte)137 && data[1] == 80 && data[2] == 78 && data[3] == 71
                 && data[4] == 13 && data[5] == 10 && data[6] == 26 && data[7] == 10) return "png";
         if (data.length >= 3 && data[0] == (byte)255 && data[1] == (byte)216 && data[2] == (byte)255) return "jpg";
@@ -116,10 +116,10 @@ public class MarkdownImageService {
         if (data.length >= 12 && ascii(data, 0, 4).equals("RIFF") && ascii(data, 8, 4).equals("WEBP")) return "webp";
         throw new BadRequestException("图片格式不支持或文件内容无效，仅支持 PNG、JPG、GIF、WebP，不支持 SVG。");
     }
-    static String objectKey(String prefix, String ownerId, LocalDate date, String fileBase, String objectId, String extension) {
+    public static String objectKey(String prefix, String ownerId, LocalDate date, String fileBase, String objectId, String extension) {
         return prefix + "/" + ownerId + "/" + date.format(OBJECT_DATE_PATH) + "/" + fileBase + "_" + objectId + "." + extension;
     }
-    static String safeFileBase(String originalFilename) {
+    public static String safeFileBase(String originalFilename) {
         String name = originalFilename == null ? "" : originalFilename.replace('\\', '/');
         name = name.substring(name.lastIndexOf('/') + 1);
         int extensionStart = name.lastIndexOf('.');

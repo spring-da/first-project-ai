@@ -12,6 +12,7 @@ import {
   Cloud,
   FolderKanban,
   Grid2X2,
+  MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
@@ -21,11 +22,14 @@ import {
   Wrench,
 } from 'lucide-vue-next'
 import AppLogo from '../components/AppLogo.vue'
+import AppModal from '../components/AppModal.vue'
 import WorkspaceUtilities from '../components/WorkspaceUtilities.vue'
 import SearchScopeSelect from '../components/SearchScopeSelect.vue'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useSearchStore } from '../stores/search'
+import { useCommunicationStore } from '../stores/communication'
+import { useNotificationStore } from '../stores/notifications'
 import { matchesDocumentSearch, matchesSearch } from '../utils/search'
 
 const router = useRouter()
@@ -33,11 +37,14 @@ const route = useRoute()
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
 const search = useSearchStore()
+const communication = useCommunicationStore()
+const notifications = useNotificationStore()
 const { query, scope } = storeToRefs(search)
 const searchInput = ref<HTMLInputElement | null>(null)
 const searchBox = ref<HTMLElement | null>(null)
 const globalSearchOpen = ref(false)
 const activeResult = ref(-1)
+const acknowledgingAnnouncement = ref(false)
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'devnest.sidebar-collapsed'
 
 function readSidebarCollapsed() {
@@ -77,10 +84,25 @@ const navItems = computed(() => [
   { to: '/', label: '工作台', icon: Grid2X2 },
   { to: '/projects', label: '项目', icon: FolderKanban },
   { to: '/knowledge', label: '知识库', icon: BookOpen },
+  { to: '/messages', label: '消息中心', icon: MessageSquareText },
   { to: '/tools', label: '系统工具', icon: Wrench, auxiliary: true },
   ...(auth.isAdmin && !auth.workspaceMember ? [{ to: '/admin/accounts', label: '人员管理', icon: UsersRound }] : []),
   { to: '/profile', label: '我的', icon: CircleUserRound },
 ])
+
+const activeAnnouncement = computed(() => communication.unreadAnnouncements[0] ?? null)
+
+async function acknowledgeAnnouncement() {
+  if (!activeAnnouncement.value || acknowledgingAnnouncement.value) return
+  acknowledgingAnnouncement.value = true
+  try {
+    await communication.acknowledgeAnnouncement(activeAnnouncement.value.id)
+  } catch (error) {
+    notifications.notify(error instanceof Error ? error.message : '公告已读状态保存失败', { type: 'error' })
+  } finally {
+    acknowledgingAnnouncement.value = false
+  }
+}
 
 function workspaceLink(path: string) {
   return auth.workspaceMember && path !== '/admin/accounts'
@@ -215,6 +237,9 @@ watch([query, scope], () => { activeResult.value = -1 })
 
 onMounted(() => {
   workspace.loadAll()
+  communication.loadUnreadAnnouncements().catch((error) => {
+    notifications.notify(error instanceof Error ? error.message : '系统公告加载失败', { type: 'error' })
+  })
   window.addEventListener('keydown', onShortcut)
   window.addEventListener('pointerdown', onPointerDown)
 })
@@ -318,6 +343,24 @@ onBeforeUnmount(() => {
         </Transition>
       </RouterView>
     </main>
+
+    <AppModal
+      v-if="activeAnnouncement"
+      :title="activeAnnouncement.title"
+      :description="`${activeAnnouncement.publisherName} · ${new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(activeAnnouncement.publishedAt))}`"
+      @close="acknowledgeAnnouncement"
+    >
+      <div class="announcement-modal-copy">
+        <span><MessageSquareText :size="20" /></span>
+        <p>{{ activeAnnouncement.content }}</p>
+      </div>
+      <div class="announcement-modal-actions">
+        <small v-if="communication.unreadAnnouncements.length > 1">确认后继续查看下一则公告</small>
+        <button class="button button-primary" type="button" :disabled="acknowledgingAnnouncement" @click="acknowledgeAnnouncement">
+          {{ acknowledgingAnnouncement ? '正在保存…' : '我已阅读' }}
+        </button>
+      </div>
+    </AppModal>
   </div>
 </template>
 
@@ -328,6 +371,11 @@ onBeforeUnmount(() => {
 .member-access-banner strong, .member-access-banner small { display: block; font-size: var(--font-xs); }
 .member-access-banner small { margin-top: 3px; color: var(--muted); }
 .member-access-banner > a { flex-shrink: 0; }
+.announcement-modal-copy { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 14px; align-items: start; }
+.announcement-modal-copy > span { width: 42px; height: 42px; display: grid; place-items: center; color: var(--accent); border-radius: 11px; background: var(--accent-bg); }
+.announcement-modal-copy p { margin: 2px 0 0; color: var(--subtle); font-size: var(--font-sm); line-height: 1.78; white-space: pre-wrap; overflow-wrap: anywhere; }
+.announcement-modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 24px; }
+.announcement-modal-actions small { color: var(--muted); font-size: var(--font-2xs); }
 @media (max-width: 600px) { .member-access-banner { flex-wrap: wrap; padding: 9px 12px; } .member-access-banner > span { flex-basis: calc(100% - 30px); } .member-access-banner > a { margin-left: auto; min-height: 32px; } }
 
 .brand-link { padding: 0 8px; }

@@ -36,7 +36,7 @@ mvn spring-boot:run
 - `image/`：Markdown 图片元数据、文件签名检查、OSS 存取和按账号鉴权读取。
 - `common/`：基础实体、业务异常和统一 `ProblemDetail` 错误响应。
 - `src/main/resources/application.yml`：环境变量映射、JPA/Flyway、multipart、Actuator 和连接池配置。
-- `src/main/resources/db/migration/`：按版本递增的生产数据库变更；当前为 V1–V13。
+- `src/main/resources/db/migration/`：按版本递增的生产数据库变更；当前为 V1–V14。
 - `src/test/java/`：服务测试与 Spring/MockMvc 集成测试。
 - `docs/`：API、Markdown 导入导出/恢复和 OSS 部署说明。
 - `compose.yml`：MySQL、后端和同级前端的本地/服务器编排入口。

@@ -17,7 +17,7 @@ beforeEach(() => {
 })
 afterEach(() => { resetWorkspaceRequests(); Reflect.deleteProperty(globalThis, 'window'); Reflect.deleteProperty(globalThis, 'localStorage') })
 
-test('member context applies to CRUD, exports and images; authentication and public shares keep their own identity', async (context) => {
+test('member context applies only to workspace data; authentication and system communication keep the real identity', async (context) => {
   setRequestWorkspace('member')
   const calls: Array<[string, string | null]> = []
   context.mock.method(globalThis, 'fetch', async (url, options) => {
@@ -31,8 +31,13 @@ test('member context applies to CRUD, exports and images; authentication and pub
   await apiDownload('/markdown-images/image')
   await apiRequest('/auth/me')
   await apiRequest('/admin/accounts')
+  await apiRequest('/announcements/unread')
+  await apiRequest('/community/messages')
+  await apiDownload('/community/messages/message/image')
   await apiDownload('/public/markdown-shares/token/images/image', { authenticated: false })
-  assert.deepEqual(calls.map(([, owner]) => owner), ['member', 'member', 'member', 'member', null, null, null])
+  assert.deepEqual(calls.map(([, owner]) => owner), [
+    'member', 'member', 'member', 'member', null, null, null, null, null, null,
+  ])
   setRequestWorkspace(null)
   await apiRequest('/tasks')
   assert.equal(calls.at(-1)?.[1], null)

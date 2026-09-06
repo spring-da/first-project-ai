@@ -50,7 +50,8 @@ export interface TemporaryPasswordSecret {
 
 export type AdminAuditAction = 'INVITATION_CREATED' | 'INVITATION_ROTATED' | 'INVITATION_REVOKED'
   | 'ACCOUNT_ENABLED' | 'ACCOUNT_DISABLED' | 'ACCOUNT_PASSWORD_RESET' | 'ACCOUNT_DELETED'
-  | 'MEMBER_WORKSPACE_WRITE'
+  | 'MEMBER_WORKSPACE_WRITE' | 'ANNOUNCEMENT_PUBLISHED' | 'ANNOUNCEMENT_ARCHIVED'
+  | 'COMMUNITY_MESSAGE_MODERATED'
 
 export interface AdminAuditEvent {
   id: string
@@ -64,6 +65,40 @@ export interface AdminAuditEvent {
   responseStatus: number
   success: boolean
   createdAt: string
+}
+
+export interface SystemAnnouncement {
+  id: string
+  title: string
+  content: string
+  publisherName: string
+  active: boolean
+  read: boolean
+  readCount: number
+  publishedAt: string
+}
+
+export interface CommunityMessage {
+  id: string
+  parentId: string | null
+  authorId: string
+  authorName: string
+  authorRole: UserRole
+  content: string
+  imageUrl: string | null
+  replyCount: number
+  viewerCanDelete: boolean
+  createdAt: string
+}
+
+export interface CommunityMessagePage {
+  items: CommunityMessage[]
+  nextCursor: string | null
+}
+
+export interface CommunityReplyPage {
+  items: CommunityMessage[]
+  nextPage: number | null
 }
 
 export interface AdminWorkspaceAccount {

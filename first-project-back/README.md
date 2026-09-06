@@ -19,6 +19,8 @@ Spring Boot 4.1.0 官方支持 Java 17–26，项目使用当前最新 Java 26�
 
 - 一次性邀请链接注册、邮箱登录、全设备主动注销及 BCrypt(12) 密码散列
 - 管理员人员管理、模拟登录成员完整工作区、管理员操作审计、短期随机临时密码、JWT 会话撤销和登录失败锁定
+- 管理员系统公告发布与撤回、成员单次已读提示
+- 成员意见交流、回复折叠分页、图片附件和管理员内容管理
 - JWT 无状态认证
 - 按登录用户隔离所有业务数据
 - 带日期、截止时间、优先级、完成时间和归档状态的任务计划 CRUD
@@ -49,13 +51,15 @@ src/main/java/com/springda/devnest/
 ├── project/       # 项目雷达
 ├── knowledge/     # 知识领域目录
 ├── markdown/      # Markdown 文章、导入与导出
+├── announcement/  # 系统公告与成员已读状态
+├── community/     # 意见消息、回复与图片附件
 ├── snippet/       # 代码片段
 └── log/           # 开发日志
 
 src/main/resources/
 ├── application.yml
 ├── application-local.example.yml
-└── db/migration/  # V1 基础结构、V2–V13 增量迁移
+└── db/migration/  # V1 基础结构、V2–V14 增量迁移
 ```
 
 每个功能包内部按 `Controller → Service → Repository → Entity` 分层。
@@ -86,7 +90,7 @@ sql/mysql8/00_create_database.sql
 src/main/resources/db/migration/V1__init_schema.sql
 ```
 
-后续版本会继续按顺序执行增量迁移，其中 V7 引入管理员人员管理，V8 加固一次性邀请、临时密码、登录锁定和 JWT 会话撤销，V9 扩展任务日期、截止时间、优先级、完成时间与归档状态，V12 保存管理员操作审计记录，V13 将审计响应状态字段修正为与 JPA `int` 映射一致的 `INT`。
+后续版本会继续按顺序执行增量迁移，其中 V7 引入管理员人员管理，V8 加固一次性邀请、临时密码、登录锁定和 JWT 会话撤销，V9 扩展任务计划，V12 保存管理员操作审计记录，V13 修正审计状态字段类型，V14 增加系统公告、成员已读状态和意见交流消息。
 
 > V8 上线提示：迁移后，V8 之前签发的 JWT 因不含 `auth_version` 会统一失效，用户需要重新登录；V7 中尚未注册的旧邀请没有可交付的一次性 Token，管理员需要在人员管理页为这些邮箱重新生成邀请链接。
 

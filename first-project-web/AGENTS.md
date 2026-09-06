@@ -29,13 +29,14 @@ npm run preview
 
 - `src/main.ts`：创建 Vue、Pinia、Router，初始化主题，注册鉴权路由守卫和 401 会话失效处理。
 - `src/App.vue`：全局路由出口、通知宿主和确认框宿主；把 Store 错误转为全局通知。
-- `src/router/index.ts`：路由定义。工作台、项目、知识库、人员管理和个人资料位于 `AppLayout` 下；管理员路由使用 `adminOnly`，主要业务页面使用 `keepAlive`。
+- `src/router/index.ts`：路由定义。工作台、项目、知识库、消息中心、人员管理和个人资料位于 `AppLayout` 下；管理员路由使用 `adminOnly`，主要业务页面使用 `keepAlive`。
 - `src/layouts/AppLayout.vue`：侧栏、顶栏、全局/页面搜索、快捷键和工作区首次加载。
 - `src/views/`：路由级页面。页面负责组合组件，不要在这里重复实现通用基础设施。
 - `src/components/`：可复用 UI。Markdown 编辑、通知、确认框和搜索范围选择器已经有专用组件。
 - `src/stores/`：跨页面状态和业务操作。
   - `auth.ts`：JWT 会话及登录/注册。
   - `admin.ts`：管理员人员目录、注册邀请、账号启禁用、密码重置和删除。
+  - `communication.ts`：系统公告、成员意见消息、游标分页和回复状态。
   - `workspace.ts`：任务、项目、目录、文章、片段、日志和资料的远端缓存与 CRUD。
   - `notifications.ts`：Toast 和按账号隔离的消息历史。
   - `confirmation.ts`：异步自定义确认框。

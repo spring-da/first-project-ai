@@ -2,20 +2,17 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  Archive,
   Ban,
-  BellRing,
+  CircleAlert,
   CheckCircle2,
   Clock3,
   Copy,
   Eye,
-  FilePenLine,
   History,
   KeyRound,
   Link2,
   LoaderCircle,
   MailPlus,
-  MessagesSquare,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -78,20 +75,6 @@ const auditActionLabels = {
   ANNOUNCEMENT_ARCHIVED: '撤回系统公告',
   COMMUNITY_MESSAGE_MODERATED: '管理意见消息',
 } as const
-
-const auditActionIcons: Record<keyof typeof auditActionLabels, typeof History> = {
-  INVITATION_CREATED: MailPlus,
-  INVITATION_ROTATED: Link2,
-  INVITATION_REVOKED: Trash2,
-  ACCOUNT_ENABLED: UserCheck,
-  ACCOUNT_DISABLED: Ban,
-  ACCOUNT_PASSWORD_RESET: KeyRound,
-  ACCOUNT_DELETED: Trash2,
-  MEMBER_WORKSPACE_WRITE: FilePenLine,
-  ANNOUNCEMENT_PUBLISHED: BellRing,
-  ANNOUNCEMENT_ARCHIVED: Archive,
-  COMMUNITY_MESSAGE_MODERATED: MessagesSquare,
-}
 
 const resourceLabels: Record<string, string> = {
   tasks: '任务', projects: '项目', domains: '知识目录', 'knowledge-items': '知识条目',
@@ -367,7 +350,10 @@ onMounted(() => load())
       <div v-else-if="!admin.auditEvents.length" class="audit-state"><History :size="19" />尚无管理员操作记录。</div>
       <div v-else class="audit-list">
         <article v-for="event in visibleAuditEvents" :key="event.id" :title="event.requestPath">
-          <span class="audit-result" :class="{ failed: !event.success }"><component :is="auditActionIcons[event.action]" :size="17" /></span>
+          <span class="audit-result" :class="{ failed: !event.success }" :aria-label="event.success ? '操作成功' : '操作失败'">
+            <CheckCircle2 v-if="event.success" :size="17" />
+            <CircleAlert v-else :size="17" />
+          </span>
           <div><strong>{{ auditTitle(event.action, event.resourceType, event.httpMethod) }}</strong><span>{{ event.actorEmail }} → {{ event.targetLabel || event.targetId || '系统' }}</span></div>
           <small>{{ event.success ? '成功' : `失败 · HTTP ${event.responseStatus}` }}</small>
           <time :datetime="event.createdAt">{{ formatDate(event.createdAt) }}</time>
@@ -453,9 +439,9 @@ onMounted(() => load())
 .audit-state { min-height: 112px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: var(--font-sm); }
 .audit-list { padding: 4px 14px; }
 .audit-list article { min-height: 68px; display: grid; grid-template-columns: 42px minmax(260px, 1fr) 110px 155px; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
-.audit-result { width: 38px; height: 38px; display: grid; place-items: center; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 11px; background: linear-gradient(145deg, var(--accent-bg), var(--panel)); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 45%, transparent); line-height: 0; }
+.audit-result { width: 32px; height: 32px; display: grid; place-items: center; color: var(--success); border-radius: 10px; background: color-mix(in srgb, var(--success) 11%, var(--panel)); line-height: 0; }
 .audit-result :deep(svg) { display: block; margin: 0; }
-.audit-result.failed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 22%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--panel)); }
+.audit-result.failed { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--panel)); }
 .audit-list article div { min-width: 0; }
 .audit-list article strong, .audit-list article span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .audit-list article strong { font-size: var(--font-xs); }

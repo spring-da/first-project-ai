@@ -4,14 +4,14 @@ defineProps<{ eyebrow: string; title: string; description: string }>()
 
 <template>
   <header class="page-header">
-    <div><p class="eyebrow">{{ eyebrow }}</p><h1>{{ title }}</h1><p class="description">{{ description }}</p></div>
+    <div class="page-header__copy"><p class="eyebrow">{{ eyebrow }}</p><h1>{{ title }}</h1><p class="description">{{ description }}</p></div>
     <div class="page-header__actions"><slot /></div>
   </header>
 </template>
 
 <style scoped>
-.page-header { display: flex; align-items: center; justify-content: space-between; gap: clamp(24px, 2vw, 36px); margin-bottom: clamp(24px, 1.5vw, 32px); }
-.page-header > div:first-child { min-width: 0; max-width: 720px; }
+.page-header { display: flex; align-items: center; justify-content: space-between; gap: clamp(24px, 2vw, 36px); margin-bottom: 24px; }
+.page-header__copy { min-width: 0; max-width: 680px; }
 .page-header h1 { margin: 0; font-size: var(--font-xl); line-height: 1.18; letter-spacing: -.65px; }
 .description { margin: 8px 0 0; color: var(--muted); font-size: var(--font-sm); line-height: 1.65; }
 .page-header__actions { display: flex; flex: 0 0 auto; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }

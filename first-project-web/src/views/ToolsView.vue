@@ -198,16 +198,16 @@ onBeforeUnmount(stopClock)
 </template>
 
 <style scoped>
-.tools-page { width: 100%; min-height: 0; flex: 1; display: flex; padding: 12px; }
+.tools-page { width: 100%; min-height: 0; flex: 1; display: flex; padding: 16px var(--page-gutter); }
 .tools-shell { width: 100%; min-height: 0; display: flex; flex: 1; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); box-shadow: var(--shadow-sm); }
-.tool-tabs { flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-sunken) 72%, var(--panel)); }
+.tool-tabs { flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-sunken) 72%, var(--panel)); }
 .tool-tabs button { position: relative; min-width: 0; width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; color: var(--muted); text-align: left; border: 1px solid transparent; border-radius: 11px; background: transparent; cursor: pointer; }
 .tool-tabs button:hover { color: var(--text); background: var(--panel); }
 .tool-tabs button.active { color: var(--accent); border-color: var(--accent-border); background: var(--accent-bg); box-shadow: var(--shadow-sm); }
 .tool-tabs button > span { width: 32px; height: 32px; display: grid; flex: 0 0 32px; place-items: center; border-radius: 9px; background: var(--panel); }
 .tool-tabs button div { min-width: 0; display: grid; gap: 3px; }
 .tool-tabs strong { color: var(--text); font-size: var(--font-xs); }
-.tool-tabs small { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.tool-tabs small { overflow: hidden; font-size: var(--font-2xs); text-overflow: ellipsis; white-space: nowrap; }
 .tool-workspace { min-width: 0; min-height: 0; flex: 1; overflow: auto; padding: 14px; }
 .cron-expression { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px 12px; margin: 0 0 14px; padding: 15px; border: 1px solid var(--accent-border); border-radius: 13px; background: var(--accent-bg); }
 .cron-expression label { min-width: 0; display: grid; gap: 7px; }
@@ -223,7 +223,7 @@ onBeforeUnmount(stopClock)
 .builder-card, .runs-card, .timestamp-card { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-sunken); }
 .builder-card > header, .runs-card > header, .timestamp-card > header { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .builder-card > header > span, .runs-card > header > span, .timestamp-card > header > span { display: flex; align-items: center; gap: 7px; color: var(--text); font-weight: 750; }
-.builder-card > header small { color: var(--muted); font-size: 10px; }
+.builder-card > header small { color: var(--muted); font-size: var(--font-2xs); }
 .runs-card > header button, .timestamp-card > header > button { display: flex; align-items: center; gap: 5px; padding: 6px 8px; color: var(--muted); border: 1px solid var(--border); border-radius: 7px; background: var(--panel); cursor: pointer; }
 .mode-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin: 17px 0; }
 .mode-grid button, .unit-toggle button { padding: 8px; color: var(--muted); border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
@@ -238,11 +238,11 @@ onBeforeUnmount(stopClock)
 .field-breakdown { display: grid; grid-template-columns: repeat(6,1fr); gap: 5px; margin-top: 17px; }
 .field-breakdown span { min-width: 0; padding: 8px 4px; text-align: center; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); }
 .field-breakdown small, .field-breakdown strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.field-breakdown small { color: var(--muted); font-size: 9px; }.field-breakdown strong { margin-top: 3px; font: 700 11px/1.2 monospace; }
+.field-breakdown small { color: var(--muted); font-size: var(--font-2xs); }.field-breakdown strong { margin-top: 3px; font: 700 var(--font-2xs)/1.2 monospace; }
 .run-list { display: grid; margin-top: 13px; }
 .run-list > div { display: grid; grid-template-columns: 26px minmax(0,1fr) auto; align-items: center; gap: 9px; min-height: 43px; border-bottom: 1px solid var(--border); }
-.run-list > div:last-child { border-bottom: 0; }.run-list > div > span { width: 22px; height: 22px; display: grid; place-items: center; color: var(--accent); border-radius: 6px; background: var(--accent-bg); font-size: 10px; font-weight: 750; }
-.run-list strong { font-size: var(--font-xs); font-weight: 650; }.run-list small { color: var(--muted); font-size: 10px; }
+.run-list > div:last-child { border-bottom: 0; }.run-list > div > span { width: 24px; height: 24px; display: grid; place-items: center; color: var(--accent); border-radius: 6px; background: var(--accent-bg); font-size: var(--font-2xs); font-weight: 750; }
+.run-list strong { font-size: var(--font-xs); font-weight: 650; }.run-list small { color: var(--muted); font-size: var(--font-2xs); }
 .tool-empty { margin: 18px 0 0; padding: 30px; color: var(--muted); text-align: center; border: 1px dashed var(--border); border-radius: 10px; }
 .json-workspace { display: flex; flex-direction: column; overflow: hidden; padding: 0; }.json-editor-host { min-height: 0; flex: 1; display: flex; overflow: hidden; }
 .timestamp-workspace { min-height: 0; }.timestamp-grid { height: 100%; align-content: start; }.timestamp-card { min-height: 330px; background: var(--panel); }

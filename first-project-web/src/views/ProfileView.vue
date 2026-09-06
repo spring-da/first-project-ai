@@ -117,7 +117,7 @@ async function logoutAll() {
 </script>
 
 <template>
-  <div class="page-content">
+  <div class="page-content page-content--focused">
     <PageHeader eyebrow="DEVELOPER PROFILE" title="我的" description="查看你的开发足迹，并管理多端工作区。">
       <button class="button button-secondary" type="button" @click="openEditor"><Edit3 :size="16" />编辑资料</button>
     </PageHeader>
@@ -188,7 +188,7 @@ async function logoutAll() {
 </template>
 
 <style scoped>
-.profile-hero { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 23px; padding: 29px; border: 1px solid var(--accent-border); border-radius: 16px; background: var(--surface-accent); }
+.profile-hero { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 23px; padding: var(--panel-padding); border: 1px solid var(--accent-border); border-radius: 16px; background: var(--surface-accent); }
 .profile-avatar { border: 3px solid var(--accent-border); border-radius: 22px; }
 .profile-copy h2 { margin: 0; font-size: 24px; letter-spacing: -.6px; }
 .profile-copy > strong { display: block; margin-top: 7px; color: var(--accent); font-size: var(--font-sm); }
@@ -196,7 +196,7 @@ async function logoutAll() {
 .profile-account { display: grid; gap: 9px; padding-left: 27px; border-left: 1px solid var(--border); }
 .profile-account span { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: var(--font-xs); }
 .profile-account svg { color: var(--accent); }
-.profile-grid { display: grid; grid-template-columns: 1.45fr .75fr; gap: 15px; margin-top: 15px; }
+.profile-grid { display: grid; grid-template-columns: 1.45fr .75fr; gap: var(--section-gap); margin-top: var(--section-gap); }
 .profile-panel { padding: 24px; border: 1px solid var(--border); border-radius: 15px; background: var(--panel); transition: border-color var(--motion-fast), transform var(--motion-base) var(--ease-emphasized), box-shadow var(--motion-base); }
 .profile-panel:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
 .panel-title { display: flex; align-items: center; justify-content: space-between; }
@@ -210,8 +210,8 @@ async function logoutAll() {
 .stat-grid strong, .stat-grid small { display: block; }
 .stat-grid strong { margin-top: 13px; font-size: 19px; }
 .stat-grid small { margin-top: 3px; color: var(--muted); font-size: var(--font-2xs); }
-.sync-state { display: flex; align-items: center; gap: 12px; margin-top: 24px; padding: 13px; border: 1px solid color-mix(in srgb,var(--success) 25%,var(--border)); border-radius: 10px; background: rgba(111,207,151,.04); }
-.sync-state > span { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 5px rgba(111,207,151,.08); }
+.sync-state { display: flex; align-items: center; gap: 12px; margin-top: 24px; padding: 13px; border: 1px solid color-mix(in srgb,var(--success) 25%,var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--success) 4%, transparent); }
+.sync-state > span { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 5px color-mix(in srgb, var(--success) 8%, transparent); }
 .sync-state.warning { border-color: color-mix(in srgb,var(--warning) 28%,var(--border)); }
 .sync-state.warning > span { background: var(--warning); box-shadow: 0 0 0 5px color-mix(in srgb,var(--warning) 10%,transparent); }
 .sync-state strong, .sync-state small { display: block; }
@@ -219,8 +219,8 @@ async function logoutAll() {
 .sync-state small { margin-top: 4px; color: var(--muted); font-size: var(--font-2xs); }
 .sync-panel > p { margin: 17px 0; color: var(--muted); font-size: var(--font-xs); line-height: 1.75; }
 .button.full { width: 100%; }
-.settings-panel { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; padding: 18px 21px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
-.appearance-panel { display: flex; align-items: center; justify-content: space-between; margin-top: 15px; padding: 18px 21px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
+.settings-panel { display: flex; align-items: center; justify-content: space-between; margin-top: var(--section-gap); padding: 18px 21px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
+.appearance-panel { display: flex; align-items: center; justify-content: space-between; margin-top: var(--section-gap); padding: 18px 21px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
 .appearance-copy { display: flex; align-items: center; gap: 12px; }
 .appearance-copy strong, .appearance-copy small { display: block; }
 .appearance-copy strong { font-size: var(--font-sm); }
@@ -239,7 +239,7 @@ async function logoutAll() {
 .password-button { color: var(--accent); border: 1px solid var(--accent-border); background: var(--accent-bg); }
 .session-button { color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 24%, var(--border)); background: color-mix(in srgb, var(--warning) 7%, transparent); }
 .session-button:disabled { opacity: .55; cursor: wait; }
-.logout-button { color: var(--danger); border: 1px solid rgba(229,140,140,.2); background: rgba(229,140,140,.05); }
+.logout-button { color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 20%, var(--border)); background: color-mix(in srgb, var(--danger) 5%, transparent); }
 .avatar-editor { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: center; gap: 15px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-raised); }
 .avatar-editor strong, .avatar-editor small { display: block; }
 .avatar-editor strong { font-size: var(--font-sm); }

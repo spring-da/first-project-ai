@@ -768,7 +768,7 @@ onDeactivated(() => emit('editing-change', false))
 </script>
 
 <template>
-  <div class="page-content knowledge-page" :class="{ 'writing-mode': isWriting }">
+  <div class="page-content page-content--wide knowledge-page" :class="{ 'writing-mode': isWriting }">
     <div class="knowledge-workspace">
       <section id="knowledge-panel" class="knowledge-results">
       <Transition name="reveal">

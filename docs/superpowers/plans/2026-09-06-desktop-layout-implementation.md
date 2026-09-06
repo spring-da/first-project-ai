@@ -30,7 +30,7 @@
 - Consumes: existing theme tokens and `.page-content` shared layout class.
 - Produces: `--content-standard`, `--content-focused`, `--content-wide`, desktop gutters and semantic `.page-content--focused` / `.page-content--wide` tracks.
 
-- [ ] **Step 1: Add semantic desktop tokens**
+- [x] **Step 1: Add semantic desktop tokens**
 
 Add layout and spacing variables beside the existing radius and typography tokens:
 
@@ -43,7 +43,7 @@ Add layout and spacing variables beside the existing radius and typography token
 --panel-padding: clamp(20px, 1.25vw, 24px);
 ```
 
-- [ ] **Step 2: Apply the standard content track**
+- [x] **Step 2: Apply the standard content track**
 
 Replace the unlimited shared page width with a centered width that includes its gutter:
 
@@ -60,15 +60,15 @@ Replace the unlimited shared page width with a centered width that includes its 
 
 Keep `.writing-mode` and full-height tool/editor exceptions able to occupy all available space.
 
-- [ ] **Step 3: Remove the collapsed-sidebar width override**
+- [x] **Step 3: Remove the collapsed-sidebar width override**
 
 Delete the desktop rule that changes all non-writing `.page-content` elements to `max-width: none` when the sidebar collapses. Sidebar state must not change the content measure.
 
-- [ ] **Step 4: Normalize shared icon and metadata rendering**
+- [x] **Step 4: Normalize shared icon and metadata rendering**
 
 Ensure Lucide SVGs inside grid/flex icon frames render as blocks, numeric metrics use tabular figures, and shared 12px metadata remains legible in both themes.
 
-- [ ] **Step 5: Verify the shared stylesheet compiles**
+- [x] **Step 5: Verify the shared stylesheet compiles**
 
 Run: `npm run build`
 
@@ -84,29 +84,29 @@ Expected: Vue type checking and Vite production build exit with code 0.
 - Consumes: shared desktop gutter and content-width tokens from Task 1.
 - Produces: stable PC shell alignment, a focusable main content target, and a consistent page heading block.
 
-- [ ] **Step 1: Align topbar content rhythm**
+- [x] **Step 1: Align topbar content rhythm**
 
 Use the shared gutter token for topbar horizontal padding and keep the breadcrumb, search, and global controls on one stable desktop baseline.
 
-- [ ] **Step 2: Add a route focus target**
+- [x] **Step 2: Add a route focus target**
 
 Give `<main class="workspace">` an id and `tabindex="-1"`. After a real route-name change, focus the main region with `preventScroll: true` so keyboard users reach the new page without changing the visible scroll position.
 
-- [ ] **Step 3: Mark repeated decorative icons correctly**
+- [x] **Step 3: Mark repeated decorative icons correctly**
 
 Add `aria-hidden="true"` to icons that sit beside equivalent visible text. Keep `aria-label` on icon-only buttons and preserve current expanded/selected states.
 
-- [ ] **Step 4: Normalize page header spacing**
+- [x] **Step 4: Normalize page header spacing**
 
 Use a fixed desktop margin relationship between `PageHeader`, its description, and action slot. Keep headings at the existing type scale and constrain descriptive copy to a readable measure.
 
-- [ ] **Step 5: Build the shell changes**
+- [x] **Step 5: Build the shell changes**
 
 Run: `npm run build`
 
 Expected: type checking passes and no route/layout imports are unused.
 
-### Task 3: Compact the dashboard and remove empty fixed-height panels
+### Task 3: Compact the dashboard while preserving bounded scrolling
 
 **Files:**
 - Modify: `first-project-web/src/views/DashboardView.vue`
@@ -114,25 +114,25 @@ Expected: type checking passes and no route/layout imports are unused.
 
 **Interfaces:**
 - Consumes: `.metric-grid`, `.metric-card`, `.dashboard-grid`, `.panel`, and semantic color tokens.
-- Produces: four compact metric cards, content-driven two-column panels, and consistent knowledge cards.
+- Produces: four compact metric cards, balanced bounded panels, and consistent knowledge cards.
 
-- [ ] **Step 1: Replace hard-coded dashboard colors**
+- [x] **Step 1: Replace hard-coded dashboard colors**
 
 Use `var(--violet)` for snippets and `var(--warning)` for Markdown documents. Keep tasks on `var(--accent)` and projects on `var(--success)`.
 
-- [ ] **Step 2: Reduce metric-card height and decoration**
+- [x] **Step 2: Reduce metric-card height and decoration**
 
 Lower the metric minimum height to approximately 120–136px, reduce the decorative background circle, and keep hover feedback subtle.
 
-- [ ] **Step 3: Remove the viewport-based panel height**
+- [x] **Step 3: Replace the oversized viewport-based panel height**
 
-Replace `height: clamp(430px, 52svh, 560px)` with a compact content-driven minimum around 320–360px. Remove mandatory internal scrolling from `.dashboard-scroll`; allow the page to grow with longer content.
+Replace `height: clamp(430px, 52svh, 560px)` with a compact fixed desktop height around 400px. Keep task and project content inside their own scroll regions so 0–200 tasks cannot change the two-column alignment, and switch to one column before task tabs require horizontal scrolling.
 
-- [ ] **Step 4: Keep empty states proportionate**
+- [x] **Step 4: Keep empty states proportionate**
 
 Ensure an empty current-project panel fills the compact panel without creating an additional viewport-height blank region.
 
-- [ ] **Step 5: Run focused dashboard logic tests**
+- [x] **Step 5: Run focused dashboard logic tests**
 
 Run: `npm test`
 
@@ -153,27 +153,27 @@ Expected: task filtering, dashboard links, sorting, workspace isolation, and all
 - Consumes: semantic page tracks and panel spacing from Task 1.
 - Produces: consistent standard, focused, and wide desktop page layouts without changing page data flows.
 
-- [ ] **Step 1: Assign page tracks**
+- [x] **Step 1: Assign page tracks**
 
 Add `page-content--wide` to the knowledge browsing page and keep writing mode unrestricted. Keep tools full width through its existing flex workspace. Add `page-content--focused` to profile. Standard pages use the default track.
 
-- [ ] **Step 2: Remove conflicting unlimited-width declarations**
+- [x] **Step 2: Remove conflicting unlimited-width declarations**
 
 Delete `max-width: none` from standard page selectors such as `.admin-page`. Retain it only for explicit editor/full-workspace states.
 
-- [ ] **Step 3: Normalize standard page section gaps**
+- [x] **Step 3: Normalize standard page section gaps**
 
 Use `var(--section-gap)` between project, announcement, message, admin, and profile sections. Use `var(--panel-padding)` for their major panel interiors where an existing special layout does not require another value.
 
-- [ ] **Step 4: Improve desktop text measure and row scanning**
+- [x] **Step 4: Improve desktop text measure and row scanning**
 
 Constrain long descriptions, message bodies, and form copy to readable widths. Raise important 9px/10px metadata to at least 11–12px while keeping compact count badges small.
 
-- [ ] **Step 5: Preserve special workspaces**
+- [x] **Step 5: Preserve special workspaces**
 
 Confirm Markdown editing, knowledge reading, JSON editing, CRON tools, image loading, audit records, and communication scrolling retain their current functional CSS states.
 
-- [ ] **Step 6: Build all page changes**
+- [x] **Step 6: Build all page changes**
 
 Run: `npm run build`
 
@@ -188,7 +188,7 @@ Expected: production build succeeds with all scoped CSS and Vue templates accept
 - Consumes: final markup and CSS from Tasks 1–4.
 - Produces: visible focus states, semantic icon treatment, light/dark parity, and no layout-changing hover state.
 
-- [ ] **Step 1: Search for remaining visual literals and tiny text**
+- [x] **Step 1: Search for remaining visual literals and tiny text**
 
 Run:
 
@@ -198,7 +198,7 @@ rg -n "font-size:\s*(8|9|10)px|#[0-9a-fA-F]{6}" first-project-web/src/views firs
 
 Review each match. Keep syntax-highlighting colors and justified compact badges; replace page-specific semantic colors and important metadata literals.
 
-- [ ] **Step 2: Search icon-only controls**
+- [x] **Step 2: Search icon-only controls**
 
 Run:
 
@@ -208,11 +208,11 @@ rg -n "<button[^>]*>|class=\"icon" first-project-web/src --glob "*.vue"
 
 For every icon-only control touched by this plan, confirm it has `aria-label` or equivalent visible text and a keyboard focus style.
 
-- [ ] **Step 3: Confirm reduced-motion support**
+- [x] **Step 3: Confirm reduced-motion support**
 
 Retain the existing global `prefers-reduced-motion: reduce` rule and ensure new transitions use shared motion tokens.
 
-- [ ] **Step 4: Check the final diff**
+- [x] **Step 4: Check the final diff**
 
 Run: `git diff --check`
 
@@ -227,29 +227,29 @@ Expected: no whitespace errors.
 - Consumes: all code changes from Tasks 1–5.
 - Produces: fresh evidence that the implementation is buildable and the isolated UI fixture remains available.
 
-- [ ] **Step 1: Run the complete logic suite**
+- [x] **Step 1: Run the complete logic suite**
 
 Run: `npm test`
 
 Expected: all tests pass with zero failures.
 
-- [ ] **Step 2: Run the production build**
+- [x] **Step 2: Run the production build**
 
 Run: `npm run build`
 
 Expected: Vue type checking and Vite production build complete with exit code 0.
 
-- [ ] **Step 3: Build the isolated UI fixture**
+- [x] **Step 3: Build the isolated UI fixture**
 
 Run: `npm run test:ui:build`
 
 Expected: fixture type checking and build complete with exit code 0.
 
-- [ ] **Step 4: Inspect desktop fixture scenarios**
+- [x] **Step 4: Inspect desktop fixture scenarios**
 
 Use the isolated page described in `first-project-web/tests/ui/README.md`. Check dashboard, projects, knowledge, announcements, messages, tools, admin, and profile at 1280px, 1440px, and 1920px in light and dark themes. Confirm standard tracks are centered, full-width workspaces remain full width, panels do not create excessive blank space, and no horizontal overflow appears.
 
-- [ ] **Step 5: Commit the implementation**
+- [x] **Step 5: Commit the implementation**
 
 ```powershell
 git add first-project-web/src docs/superpowers/plans/2026-09-06-desktop-layout-implementation.md

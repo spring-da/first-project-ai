@@ -333,10 +333,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.message-center-page { display: grid; gap: 16px; }
+.message-center-page { display: grid; gap: var(--section-gap); }
 .message-center-page :deep(.page-header) { margin-bottom: 8px; }
 .community-section { overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); }
-.community-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px; border-bottom: 1px solid var(--border); }
+.community-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: var(--panel-padding); border-bottom: 1px solid var(--border); }
 .community-heading h2 { margin: 0; font-size: var(--font-lg); }
 .community-heading p { margin: 7px 0 0; color: var(--muted); font-size: var(--font-xs); line-height: 1.6; }
 .community-heading > span { color: var(--muted); font-size: var(--font-xs); }
@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
 .icon-button { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; color: var(--muted); border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; }
 .icon-button:hover { color: var(--accent); border-color: var(--border); background: var(--surface-raised); }
 .icon-button.danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, var(--border)); }
-.message-composer { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; margin: 18px 20px 8px; padding: 17px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); }
+.message-composer { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; margin: 16px 20px 6px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-raised); }
 .composer-avatar { width: 42px; height: 42px; border-radius: 12px; }
 .composer-main { min-width: 0; }
 .composer-main > textarea, .reply-composer textarea { width: 100%; resize: vertical; padding: 3px 2px 12px; color: var(--text); border: 0; outline: 0; background: transparent; line-height: 1.65; }
@@ -364,10 +364,10 @@ onBeforeUnmount(() => {
 .message-avatar { width: 38px; height: 38px; border-radius: 11px; }
 .message-meta > div { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; }
 .message-meta strong { font-size: var(--font-sm); }
-.message-meta > div > span, .reply-item header span { display: inline-flex; align-items: center; gap: 3px; padding: 3px 6px; color: var(--accent); border-radius: 99px; background: var(--accent-bg); font-size: 10px; }
+.message-meta > div > span, .reply-item header span { display: inline-flex; align-items: center; gap: 3px; padding: 3px 6px; color: var(--accent); border-radius: 99px; background: var(--accent-bg); font-size: var(--font-2xs); }
 .message-meta time { flex-basis: 100%; color: var(--muted); font-size: var(--font-2xs); }
 .message-meta > .icon-button { margin-left: auto; }
-.message-body { margin: 13px 0 0 48px; color: var(--text); font-size: var(--font-sm); line-height: 1.72; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message-body { max-width: 920px; margin: 13px 0 0 48px; color: var(--text); font-size: var(--font-sm); line-height: 1.72; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-image { margin: 13px 0 0 48px; width: min(720px, calc(100% - 48px)); }
 .message-actions { display: flex; align-items: center; gap: 5px; margin: 10px 0 0 40px; }
 .reply-composer, .reply-panel { margin: 10px 0 0 48px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-sunken); }
@@ -381,7 +381,7 @@ onBeforeUnmount(() => {
 .reply-item > div { min-width: 0; }
 .reply-item header { display: flex; align-items: center; gap: 7px; }
 .reply-item header strong { font-size: var(--font-xs); }
-.reply-item header time { color: var(--muted); font-size: 10px; }
+.reply-item header time { color: var(--muted); font-size: var(--font-2xs); }
 .reply-item header button { display: grid; place-items: center; margin-left: auto; padding: 3px; color: var(--muted); border: 0; border-radius: 5px; background: transparent; cursor: pointer; }
 .reply-item header button:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .reply-item p { margin: 6px 0 0; color: var(--subtle); font-size: var(--font-xs); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }

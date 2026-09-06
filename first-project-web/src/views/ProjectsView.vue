@@ -187,20 +187,20 @@ async function removeProject(project: DevProject) {
 </template>
 
 <style scoped>
-.project-overview { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
-.project-overview > div { padding: clamp(20px, 1.2vw, 28px); border-right: 1px solid var(--border); }
+.project-overview { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: var(--section-gap); border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+.project-overview > div { padding: var(--panel-padding); border-right: 1px solid var(--border); }
 .project-overview > div:last-child { border: 0; }
 .project-overview span, .project-overview strong { display: block; }
 .project-overview span { color: var(--muted); font-size: var(--font-xs); }
 .project-overview strong { margin-top: 9px; font-size: var(--font-lg); }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: clamp(24px, 1.4vw, 32px) 0 clamp(18px, 1vw, 24px); }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 20px 0 16px; }
 .filter-tabs { display: flex; gap: 5px; }
 .filter-tabs button { min-height: var(--control-height); padding: 0 14px; color: var(--muted); border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; font-size: var(--font-xs); transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast), transform var(--motion-base) var(--ease-standard); }
 .filter-tabs button:hover { color: var(--text); background: var(--surface-raised); transform: translateY(-1px); }
 .filter-tabs button.active { color: var(--accent); border-color: var(--accent-border); background: var(--accent-bg); }
-.project-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(14px, 1vw, 22px); }
-.project-card { padding: clamp(22px, 1.35vw, 30px); border: 1px solid var(--border); border-radius: 17px; background: var(--panel); box-shadow: 0 5px 22px rgba(0,0,0,.025); transition: border-color .2s, transform .2s, box-shadow .2s; }
-.project-card:hover { border-color: var(--border-strong); box-shadow: 0 10px 28px rgba(0,0,0,.06); transform: translateY(-2px); }
+.project-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--section-gap); }
+.project-card { padding: var(--panel-padding); border: 1px solid var(--border); border-radius: 17px; background: var(--panel); box-shadow: var(--shadow-sm); transition: border-color .2s, transform .2s, box-shadow .2s; }
+.project-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); transform: translateY(-2px); }
 .project-card.focused { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow-md); animation: project-focus 1.15s ease-in-out 2; }
 @keyframes project-focus {
   0%, 100% { box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-md); }
@@ -208,11 +208,11 @@ async function removeProject(project: DevProject) {
 }
 .project-card__top { display: flex; align-items: center; justify-content: space-between; }
 .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 999px; color: var(--warning); background: color-mix(in srgb,var(--warning) 10%,transparent); font-size: var(--font-2xs); font-weight: 700; }
-.status-badge.building { color: var(--success); background: rgba(111,207,151,.08); }
-.status-badge.paused { color: var(--muted); background: rgba(170,176,187,.08); }
-.status-badge.completed { color: var(--accent); background: rgba(132,184,232,.08); }
+.status-badge.building { color: var(--success); background: color-mix(in srgb, var(--success) 8%, transparent); }
+.status-badge.paused { color: var(--muted); background: color-mix(in srgb, var(--muted) 8%, transparent); }
+.status-badge.completed { color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .project-actions { display: flex; gap: 2px; }
-.project-actions button { padding: 6px; color: var(--muted); border: 0; border-radius: 7px; background: transparent; cursor: pointer; transition: color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast); }
+.project-actions button { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; color: var(--muted); border: 0; border-radius: 7px; background: transparent; cursor: pointer; transition: color var(--motion-fast), background var(--motion-fast), transform var(--motion-fast); }
 .project-actions button:hover { color: var(--text); background: var(--surface-raised); transform: translateY(-1px); }
 .project-card__identity { display: grid; grid-template-columns: 45px 1fr; gap: 13px; margin-top: 20px; }
 .project-card__identity > span { width: 45px; height: 45px; display: grid; place-items: center; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 11px; background: var(--accent-bg); font-size: var(--font-sm); font-weight: 800; }

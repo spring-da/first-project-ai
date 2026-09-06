@@ -107,7 +107,7 @@ onActivated(load)
 </template>
 
 <style scoped>
-.announcements-page { display: grid; gap: 16px; }
+.announcements-page { display: grid; gap: var(--section-gap); }
 .announcements-page :deep(.page-header) { margin-bottom: 8px; }
 .announcement-publisher, .announcement-board { border: 1px solid var(--border); border-radius: 16px; background: var(--panel); }
 .announcement-publisher { overflow: hidden; border-color: var(--accent-border); background: var(--surface-accent); }
@@ -117,18 +117,18 @@ onActivated(load)
 .publisher-copy h2, .announcement-board h2 { margin: 0; font-size: var(--font-lg); }
 .publisher-copy > div > p:last-child { margin: 7px 0 0; color: var(--muted); font-size: var(--font-xs); line-height: 1.6; }
 .markdown-status { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; padding: 7px 10px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 99px; background: var(--panel); font-size: var(--font-2xs); }
-.announcement-publisher form { display: grid; gap: 14px; padding: 18px 24px 20px; }
+.announcement-publisher form { display: grid; gap: 14px; padding: 18px var(--panel-padding) var(--panel-padding); }
 .title-field { max-width: none; }
-.markdown-composer { height: clamp(440px, 54vh, 650px); display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); overflow: hidden; border: 1px solid var(--border-strong); border-radius: 13px; background: var(--panel); box-shadow: 0 8px 28px color-mix(in srgb, var(--accent) 7%, transparent); }
+.markdown-composer { height: clamp(480px, 56vh, 680px); display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); overflow: hidden; border: 1px solid var(--border-strong); border-radius: 13px; background: var(--panel); box-shadow: 0 8px 28px color-mix(in srgb, var(--accent) 7%, transparent); }
 .markdown-pane { min-width: 0; display: flex; flex-direction: column; margin: 0; }
 .markdown-pane > span, .preview-pane > header { min-height: 43px; display: flex; align-items: center; gap: 7px; padding: 0 14px; color: var(--subtle); border-bottom: 1px solid var(--border); background: var(--surface-raised); font-size: var(--font-xs); font-weight: 700; }
 .editor-pane { position: relative; border-right: 1px solid var(--border); }
 .editor-pane textarea { flex: 1; min-height: 0; resize: none; padding: 18px; color: var(--text); border: 0; outline: 0; background: transparent; font: 13px/1.75 "Cascadia Code", Consolas, monospace; tab-size: 2; }
 .editor-pane:focus-within { box-shadow: inset 0 0 0 2px var(--accent-soft); }
-.editor-pane > small { position: absolute; right: 12px; bottom: 10px; padding: 3px 6px; color: var(--muted); border-radius: 6px; background: color-mix(in srgb, var(--panel) 90%, transparent); font-size: 10px; }
+.editor-pane > small { position: absolute; right: 12px; bottom: 10px; padding: 3px 6px; color: var(--muted); border-radius: 6px; background: color-mix(in srgb, var(--panel) 90%, transparent); font-size: var(--font-2xs); }
 .preview-pane > header { justify-content: space-between; }
 .preview-pane > header span { display: inline-flex; align-items: center; gap: 7px; }
-.preview-pane > header small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.preview-pane > header small { color: var(--muted); font-size: var(--font-2xs); font-weight: 500; }
 .preview-content { flex: 1; min-height: 0; overflow: auto; padding: 20px 22px; }
 .preview-empty { min-height: 350px; display: grid; place-content: center; justify-items: center; gap: 8px; color: var(--muted); text-align: center; }
 .preview-empty svg { color: var(--accent); }
@@ -146,7 +146,7 @@ onActivated(load)
 .announcement-copy { min-width: 0; }
 .announcement-copy > div { display: flex; align-items: center; gap: 8px; }
 .announcement-copy h3 { margin: 0; font-size: var(--font-sm); }
-.announcement-copy > div > span { padding: 3px 6px; color: var(--muted); border-radius: 99px; background: var(--surface-raised); font-size: 10px; }
+.announcement-copy > div > span { padding: 3px 6px; color: var(--muted); border-radius: 99px; background: var(--surface-raised); font-size: var(--font-2xs); }
 .announcement-markdown { margin: 10px 0 12px; color: var(--subtle); font-size: var(--font-xs); line-height: 1.7; }
 .announcement-copy small { color: var(--muted); font-size: var(--font-2xs); }
 .preview-content :deep(.markdown-body > :first-child), .announcement-markdown :deep(.markdown-body > :first-child) { margin-top: 0; }

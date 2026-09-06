@@ -45,6 +45,7 @@ const notifications = useNotificationStore()
 const { query, scope } = storeToRefs(search)
 const searchInput = ref<HTMLInputElement | null>(null)
 const searchBox = ref<HTMLElement | null>(null)
+const workspaceMain = ref<HTMLElement | null>(null)
 const globalSearchOpen = ref(false)
 const activeResult = ref(-1)
 const acknowledgingAnnouncement = ref(false)
@@ -225,10 +226,13 @@ function toggleSidebar() {
   }
 }
 
-watch(() => route.name, () => {
+watch(() => route.name, (name, previousName) => {
   if (route.name !== 'knowledge') editorFocused.value = false
   search.reset(hasPageSearch.value ? 'page' : 'global')
   globalSearchOpen.value = false
+  if (previousName !== undefined && name !== previousName) {
+    void nextTick(() => workspaceMain.value?.focus({ preventScroll: true }))
+  }
 }, { immediate: true })
 watch([query, scope], () => { activeResult.value = -1 })
 
@@ -275,7 +279,7 @@ onBeforeUnmount(() => {
           :title="item.label"
           :aria-label="item.label"
         >
-          <component :is="item.icon" :size="19" /><span>{{ item.label }}</span>
+          <component :is="item.icon" :size="19" aria-hidden="true" /><span>{{ item.label }}</span>
         </RouterLink>
       </nav>
       <div class="sidebar-footer">
@@ -290,22 +294,22 @@ onBeforeUnmount(() => {
         <RouterLink class="profile-chip" :to="workspaceLink('/profile')" :title="displayName" :aria-label="`打开 ${displayName} 的个人设置`">
           <UserAvatar class="avatar" :name="displayName" :seed="auth.workspaceUser?.id" :url="workspace.profile?.avatarUrl" />
           <span><strong>{{ displayName }}</strong><small>{{ displayRole }}</small></span>
-          <ChevronRight :size="16" />
+          <ChevronRight :size="16" aria-hidden="true" />
         </RouterLink>
       </div>
     </aside>
 
-    <main class="workspace">
+    <main id="main-content" ref="workspaceMain" class="workspace" tabindex="-1">
       <div v-if="auth.workspaceMember" class="member-access-banner" role="status">
-        <ShieldCheck :size="17" />
+        <ShieldCheck :size="17" aria-hidden="true" />
         <span><strong>正在模拟登录：{{ displayName }}</strong><small>{{ auth.workspaceMember.email }} · 管理员可编辑此成员的全部工作区数据</small></span>
         <RouterLink to="/admin/accounts" class="button button-secondary"><ArrowLeft :size="15" />返回人员管理</RouterLink>
       </div>
       <Transition name="topbar">
       <header v-if="!editorFocused" class="topbar">
-        <div class="workspace-breadcrumb"><span>个人空间</span><ChevronRight :size="13" /><strong>{{ currentNav.label }}</strong></div>
+        <div class="workspace-breadcrumb"><span>个人空间</span><ChevronRight :size="13" aria-hidden="true" /><strong>{{ currentNav.label }}</strong></div>
         <div ref="searchBox" class="global-search" @focusout="onSearchFocusOut">
-          <Search :size="18" />
+          <Search :size="18" aria-hidden="true" />
           <SearchScopeSelect v-if="hasPageSearch" v-model="scope" @change="openGlobalSearch" @open-change="(open) => { if (open) globalSearchOpen = false }" />
           <input ref="searchInput" v-model="query" type="search" :placeholder="searchPlaceholder" aria-label="搜索" :role="scope === 'global' ? 'combobox' : 'searchbox'" :aria-expanded="scope === 'global' ? showSearchResults : undefined" :aria-controls="showSearchResults ? 'global-search-results' : undefined" :aria-activedescendant="showSearchResults && activeResult >= 0 ? `search-result-${activeResult}` : undefined" autocomplete="off" @focus="globalSearchOpen = true" @keydown="onSearchKeydown" />
           <button v-if="query" type="button" aria-label="清空搜索" @click="search.clear(); searchInput?.focus()"><X :size="15" /></button>
@@ -324,7 +328,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="topbar-actions">
           <button class="icon-btn" type="button" :disabled="workspace.loading" aria-label="刷新数据" @click="workspace.loadAll(true)">
-            <RefreshCw :size="18" :class="{ spin: workspace.loading }" />
+            <RefreshCw :size="18" :class="{ spin: workspace.loading }" aria-hidden="true" />
           </button>
           <WorkspaceUtilities />
         </div>
@@ -348,7 +352,7 @@ onBeforeUnmount(() => {
       @close="acknowledgeAnnouncement"
     >
       <div class="announcement-modal-copy">
-        <span><BellRing :size="20" /></span>
+        <span><BellRing :size="20" aria-hidden="true" /></span>
         <div class="announcement-modal-markdown"><MarkdownContent :source="activeAnnouncement.content" /></div>
       </div>
       <div class="announcement-modal-actions">
@@ -362,6 +366,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.workspace:focus { outline: none; }
 .member-access-banner { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; padding: 10px 20px; color: var(--accent); background: var(--accent-bg); border-bottom: 1px solid var(--accent-border); }
 .member-access-banner > svg { flex-shrink: 0; }
 .member-access-banner > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

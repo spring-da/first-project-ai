@@ -395,7 +395,7 @@ onMounted(() => load())
 
 <style scoped>
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.admin-page { width: 100%; max-width: none; }
+.admin-page { width: 100%; }
 .admin-overview { display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)) minmax(260px, 1.4fr); gap: 12px; }
 .admin-overview > div, .admin-overview > p { min-height: 120px; margin: 0; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); transition: border-color var(--motion-fast), transform var(--motion-base) var(--ease-emphasized), box-shadow var(--motion-base); }
 .admin-overview > div:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
@@ -406,13 +406,13 @@ onMounted(() => load())
 .metric-icon.danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .admin-overview > p { display: flex; align-items: center; gap: 11px; color: var(--muted); font-size: var(--font-sm); line-height: 1.65; background: var(--surface-accent); }
 .admin-overview > p svg { flex-shrink: 0; color: var(--accent); }
-.invite-panel { display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 14px; padding: 23px; border: 1px solid var(--accent-border); border-radius: 15px; background: var(--surface-accent); }
+.invite-panel { display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: var(--section-gap); padding: var(--panel-padding); border: 1px solid var(--accent-border); border-radius: 15px; background: var(--surface-accent); }
 .invite-panel h2, .accounts-panel h2 { margin: 0; font-size: var(--font-lg); }
 .invite-panel > div > p:last-child { margin: 7px 0 0; color: var(--muted); font-size: var(--font-xs); }
 .invite-panel form { width: min(760px, 58%); display: grid; grid-template-columns: 1fr auto; gap: 9px; }
 .invite-panel input { width: 100%; height: var(--control-height); padding: 0 14px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 10px; outline: none; background: var(--panel); }
 .invite-panel input:focus, .account-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.accounts-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 15px; overflow: hidden; background: var(--panel); }
+.accounts-panel { margin-top: var(--section-gap); border: 1px solid var(--border); border-radius: 15px; overflow: hidden; background: var(--panel); }
 .accounts-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 22px; border-bottom: 1px solid var(--border); }
 .account-tools { display: flex; align-items: center; gap: 9px; }
 .account-search { width: clamp(220px, 18vw, 360px); display: flex; align-items: center; gap: 7px; padding: 0 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 9px; transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast); }
@@ -422,7 +422,7 @@ onMounted(() => load())
 .filters button:active { transform: scale(.96); }
 .filters button.active { color: var(--accent); background: var(--accent-bg); }
 .account-list { padding: 5px 14px; }
-.account-list-heading { display: grid; grid-template-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) minmax(300px, auto); gap: 14px; padding: 9px 22px; color: var(--muted); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-sunken) 72%, transparent); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.account-list-heading { display: grid; grid-template-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) minmax(300px, auto); gap: 14px; padding: 9px 22px; color: var(--muted); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-sunken) 72%, transparent); font-size: var(--font-2xs); font-weight: 700; letter-spacing: .08em; }
 .account-list-heading span:nth-child(3) { padding-left: 8px; }
 .account-list-heading span:last-child { text-align: right; }
 .account-row { display: grid; grid-template-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) minmax(300px, auto); align-items: center; gap: 14px; min-height: 86px; padding: 12px 8px; border-bottom: 1px solid var(--border); transition: background var(--motion-fast), opacity var(--motion-base), transform var(--motion-slow) var(--ease-emphasized); }
@@ -448,7 +448,7 @@ onMounted(() => load())
 .icon-action:hover { border-color: color-mix(in srgb, var(--danger) 25%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, transparent); }
 .current-account { padding: 6px 9px; color: var(--muted); border: 1px solid var(--border); border-radius: 99px; font-size: var(--font-2xs); }
 .account-state { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--muted); font-size: var(--font-sm); }
-.audit-panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 15px; overflow: hidden; background: var(--panel); }
+.audit-panel { margin-top: var(--section-gap); border: 1px solid var(--border); border-radius: 15px; overflow: hidden; background: var(--panel); }
 .audit-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 21px 22px; border-bottom: 1px solid var(--border); }
 .audit-panel h2 { margin: 0; font-size: var(--font-lg); }
 .audit-panel header span { display: block; margin-top: 6px; color: var(--muted); font-size: var(--font-xs); }

@@ -159,10 +159,10 @@ function formatDueAt(value: string) {
     <WorkspaceModuleState module="profile" title="个人资料" :has-data="Boolean(workspace.profile)" compact />
 
     <section class="metric-grid" aria-label="工作台概览">
-      <button class="metric-card tasks" type="button" aria-label="查看今天的任务" @click="selectTaskView('TODAY', true)"><div class="metric-card-heading"><span class="metric-icon"><CalendarDays :size="18" /></span><span>查看任务<ArrowUpRight :size="15" /></span></div><div class="metric-top"><span>今日进度</span><span class="metric-badge">{{ workspace.taskProgress }}%</span></div><strong>{{ !workspace.tasks.length && (workspace.moduleStates.tasks.loading || workspace.moduleStates.tasks.error) ? '—' : `${workspace.todayCompletedTasks} / ${workspace.todayTasks.length}` }}</strong><p>今天安排的任务已完成</p><div class="progress"><span :style="{ width: `${workspace.taskProgress}%` }"></span></div></button>
-      <button class="metric-card projects" type="button" aria-label="查看构建中的项目" @click="router.push({ name: 'projects', query: workspaceQuery({ status: 'BUILDING' }) })"><div class="metric-card-heading"><span class="metric-icon"><FolderKanban :size="18" /></span><span>筛选项目<ArrowUpRight :size="15" /></span></div><span>进行中的项目</span><strong>{{ !workspace.projects.length && (workspace.moduleStates.projects.loading || workspace.moduleStates.projects.error) ? '—' : workspace.activeProjects }}</strong><p>保持节奏，持续推进</p></button>
-      <button class="metric-card snippets" type="button" aria-label="查看收藏的代码片段" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'snippets', featured: '1' }) })"><div class="metric-card-heading"><span class="metric-icon"><Code2 :size="18" /></span><span>查看收藏<ArrowUpRight :size="15" /></span></div><span>收藏的片段</span><strong>{{ !workspace.snippets.length && (workspace.moduleStates.snippets.loading || workspace.moduleStates.snippets.error) ? '—' : workspace.favoriteSnippets }}</strong><p>随时可复用的代码资产</p></button>
-      <button class="metric-card documents" type="button" aria-label="查看 Markdown 文章" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents' }) })"><div class="metric-card-heading"><span class="metric-icon"><FileText :size="18" /></span><span>打开文章<ArrowUpRight :size="15" /></span></div><span>Markdown 文章</span><strong>{{ !workspace.markdownDocuments.length && (workspace.moduleStates.markdownDocuments.loading || workspace.moduleStates.markdownDocuments.error) ? '—' : workspace.markdownDocuments.length }}</strong><p>持续生长的个人知识库</p></button>
+      <button class="metric-card tasks" type="button" aria-label="查看今天的任务" @click="selectTaskView('TODAY', true)"><div class="metric-card-heading"><span class="metric-icon"><CalendarDays :size="18" aria-hidden="true" /></span><span>查看任务<ArrowUpRight :size="15" aria-hidden="true" /></span></div><div class="metric-top"><span>今日进度</span><span class="metric-badge">{{ workspace.taskProgress }}%</span></div><strong>{{ !workspace.tasks.length && (workspace.moduleStates.tasks.loading || workspace.moduleStates.tasks.error) ? '—' : `${workspace.todayCompletedTasks} / ${workspace.todayTasks.length}` }}</strong><p>今天安排的任务已完成</p><div class="progress"><span :style="{ width: `${workspace.taskProgress}%` }"></span></div></button>
+      <button class="metric-card projects" type="button" aria-label="查看构建中的项目" @click="router.push({ name: 'projects', query: workspaceQuery({ status: 'BUILDING' }) })"><div class="metric-card-heading"><span class="metric-icon"><FolderKanban :size="18" aria-hidden="true" /></span><span>筛选项目<ArrowUpRight :size="15" aria-hidden="true" /></span></div><span>进行中的项目</span><strong>{{ !workspace.projects.length && (workspace.moduleStates.projects.loading || workspace.moduleStates.projects.error) ? '—' : workspace.activeProjects }}</strong><p>保持节奏，持续推进</p></button>
+      <button class="metric-card snippets" type="button" aria-label="查看收藏的代码片段" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'snippets', featured: '1' }) })"><div class="metric-card-heading"><span class="metric-icon"><Code2 :size="18" aria-hidden="true" /></span><span>查看收藏<ArrowUpRight :size="15" aria-hidden="true" /></span></div><span>收藏的片段</span><strong>{{ !workspace.snippets.length && (workspace.moduleStates.snippets.loading || workspace.moduleStates.snippets.error) ? '—' : workspace.favoriteSnippets }}</strong><p>随时可复用的代码资产</p></button>
+      <button class="metric-card documents" type="button" aria-label="查看 Markdown 文章" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents' }) })"><div class="metric-card-heading"><span class="metric-icon"><FileText :size="18" aria-hidden="true" /></span><span>打开文章<ArrowUpRight :size="15" aria-hidden="true" /></span></div><span>Markdown 文章</span><strong>{{ !workspace.markdownDocuments.length && (workspace.moduleStates.markdownDocuments.loading || workspace.moduleStates.markdownDocuments.error) ? '—' : workspace.markdownDocuments.length }}</strong><p>持续生长的个人知识库</p></button>
     </section>
 
     <section class="dashboard-grid">
@@ -232,20 +232,20 @@ function formatDueAt(value: string) {
 .focus-pill.warning > span { background: var(--warning); }
 .metric-grid { gap: var(--dashboard-column-gap); }
 .metric-card { --metric-color: var(--accent); position: relative; min-width: 0; overflow: hidden; color: var(--text); text-align: left; font: inherit; cursor: pointer; background: linear-gradient(145deg, color-mix(in srgb, var(--metric-color) 8%, var(--panel)) 0%, var(--panel) 66%); transition: border-color var(--motion-fast), box-shadow var(--motion-base), transform var(--motion-base) var(--ease-emphasized); }
-.metric-card::after { content: ''; position: absolute; right: -42px; bottom: -54px; width: 128px; height: 128px; border: 22px solid color-mix(in srgb, var(--metric-color) 7%, transparent); border-radius: 50%; pointer-events: none; }
-.metric-card:hover { border-color: color-mix(in srgb, var(--metric-color) 32%, var(--border)); box-shadow: 0 12px 28px color-mix(in srgb, var(--metric-color) 10%, transparent); transform: translateY(-3px); }
+.metric-card::after { content: ''; position: absolute; right: -34px; bottom: -42px; width: 96px; height: 96px; border: 16px solid color-mix(in srgb, var(--metric-color) 7%, transparent); border-radius: 50%; pointer-events: none; }
+.metric-card:hover { border-color: color-mix(in srgb, var(--metric-color) 32%, var(--border)); box-shadow: 0 8px 22px color-mix(in srgb, var(--metric-color) 9%, transparent); transform: translateY(-2px); }
 .metric-card:active { transform: translateY(-1px) scale(.995); }
 .metric-card:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
-.metric-card.projects { --metric-color: var(--success); }.metric-card.snippets { --metric-color: #8464d6; }.metric-card.documents { --metric-color: #c77a2a; }
+.metric-card.projects { --metric-color: var(--success); }.metric-card.snippets { --metric-color: var(--violet); }.metric-card.documents { --metric-color: var(--warning); }
 .metric-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
-.metric-card-heading > span:last-child { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; font-weight: 650; }
+.metric-card-heading > span:last-child { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: var(--font-2xs); font-weight: 650; }
 .metric-card-heading .metric-icon { width: 34px; height: 34px; display: grid; place-items: center; color: var(--metric-color); border-radius: 10px; background: color-mix(in srgb, var(--metric-color) 12%, var(--panel)); }
 .metric-card:hover .metric-card-heading > span:last-child { color: var(--metric-color); }
 .metric-card > strong { position: relative; z-index: 1; }
 .metric-card > p { position: relative; z-index: 1; }
 .metric-card .progress { position: relative; z-index: 1; }
 .metric-card.tasks { background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 11%, var(--panel)) 0%, var(--panel) 70%); border-color: var(--accent-border); }
-.dashboard-grid { --dashboard-panel-height: clamp(430px, 52svh, 560px); grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--dashboard-column-gap); }
+.dashboard-grid { --dashboard-panel-height: 400px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--dashboard-column-gap); }
 .dashboard-grid > .panel { display: flex; flex-direction: column; height: var(--dashboard-panel-height); min-height: 0; min-width: 0; overflow: hidden; }
 .panel-heading { flex-shrink: 0; gap: 12px; }
 .panel-heading .text-link { flex-shrink: 0; }
@@ -255,7 +255,7 @@ function formatDueAt(value: string) {
 .task-view-tabs { display: flex; gap: 4px; overflow-x: auto; flex-shrink: 0; margin-top: 14px; padding-bottom: 3px; scrollbar-width: thin; }
 .task-view-tabs button { min-width: max-content; display: inline-flex; align-items: center; gap: 5px; padding: 7px 8px; color: var(--muted); border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; font-size: var(--font-2xs); }
 .task-view-tabs button.active { color: var(--accent); border-color: var(--accent-border); background: var(--accent-bg); }
-.task-view-tabs b { min-width: 17px; padding: 1px 4px; border-radius: 999px; background: var(--surface-sunken); font-size: 9px; }
+.task-view-tabs b { min-width: 17px; padding: 1px 4px; border-radius: 999px; background: var(--surface-sunken); font-size: var(--font-2xs); }
 .task-scroll { margin-top: 4px; }
 .task-list { margin: 0; padding: 0; list-style: none; }
 .task-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 7px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
@@ -265,9 +265,9 @@ function formatDueAt(value: string) {
 .task-copy strong { display: block; line-height: 1.5; overflow-wrap: anywhere; }
 .task-row.done .task-copy strong { color: var(--muted); text-decoration: line-through; }
 .task-copy > span { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
-.task-copy small { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 10px; }
+.task-copy small { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: var(--font-2xs); }
 .task-copy small.overdue { color: var(--danger); }
-.priority { padding: 2px 5px; color: var(--muted); border-radius: 5px; background: var(--surface-sunken); font-size: 9px; font-style: normal; }
+.priority { padding: 2px 5px; color: var(--muted); border-radius: 5px; background: var(--surface-sunken); font-size: var(--font-2xs); font-style: normal; }
 .priority.high { color: var(--warning); }.priority.urgent { color: var(--danger); }.priority.low { color: var(--subtle); }
 .task-actions { display: flex; opacity: 0; transform: translateX(4px); transition: opacity var(--motion-fast), transform var(--motion-fast); }
 .task-row:hover .task-actions, .task-row:focus-within .task-actions { opacity: 1; transform: none; }
@@ -289,7 +289,7 @@ function formatDueAt(value: string) {
 @media (hover: none) { .task-actions { opacity: .85; transform: none; } }
 @media (max-width: 1200px) { .knowledge-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1700px) { .knowledge-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (max-width: 1040px) { .dashboard-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1320px) { .dashboard-grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) {
   .dashboard-page { padding-top: 25px; }.dashboard-grid { --dashboard-panel-height: min(590px, 68svh); }.knowledge-strip { padding: 18px; }.knowledge-grid { grid-template-columns: 1fr; }.section-title { align-items: center; }
   .task-view-tabs button span { display: none; }.task-actions { opacity: .85; transform: none; }.form-row { grid-template-columns: 1fr; }

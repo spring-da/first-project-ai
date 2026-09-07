@@ -29,7 +29,7 @@ public class DevLogEntity extends BaseEntity {
     @Column(nullable = false, length = 240)
     private String title;
 
-    @Column(nullable = false, columnDefinition = "longtext")
+    @Column(nullable = false, columnDefinition = "text")
     private String content;
 
     @Enumerated(EnumType.STRING)

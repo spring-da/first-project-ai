@@ -2,9 +2,9 @@
 # 此文件包含占位符，application-local.yml 已加入 .gitignore。
 spring:
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/devnest?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:postgresql://127.0.0.1:5432/devnest
     username: devnest
-    password: 在这里填写你的MySQL密码
+    password: 在这里填写你的PostgreSQL密码
 
 app:
   security:

@@ -20,7 +20,7 @@ public class MarkdownRevisionEntity extends BaseEntity {
     private String title;
     @Column(name = "file_name", nullable = false, length = 255)
     private String fileName;
-    @Column(nullable = false, columnDefinition = "longtext")
+    @Column(nullable = false, columnDefinition = "text")
     private String content;
     @Column(name = "domain_id", length = 36)
     private String domainId;

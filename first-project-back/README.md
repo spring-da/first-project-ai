@@ -9,7 +9,7 @@ DevNest Android 与 Web 共用的 REST API 后端，由 springda 的个人 Flutt
 - Spring Web MVC
 - Spring Data JPA / Hibernate
 - Spring Security 7 + JWT（HS256）
-- MySQL 8 / MySQL Connector/J
+- PostgreSQL 17+ / PostgreSQL JDBC，pgvector 0.8.2
 - Flyway 数据库版本管理
 - Maven
 
@@ -33,7 +33,7 @@ Spring Boot 4.1.0 官方支持 Java 17–26，项目使用当前最新 Java 26�
 - 结构化开发日志与标签 CRUD
 - 开发者资料查询与修改、性别设置、默认头像与私有 OSS 头像上传
 - 参数校验和统一 `ProblemDetail` 错误响应
-- MySQL 8 表结构、索引和 Flyway 迁移
+- PostgreSQL 表结构、索引和 Flyway 迁移
 - Flutter Web 本地开发所需 CORS 配置
 - Actuator 健康检查
 
@@ -60,7 +60,7 @@ src/main/java/com/springda/devnest/
 src/main/resources/
 ├── application.yml
 ├── application-local.example.yml
-└── db/migration/  # V1 基础结构、V2–V16 增量迁移
+└── db/postgresql/ # PostgreSQL V17 基线；后续从 V18 递增
 ```
 
 每个功能包内部按 `Controller → Service → Repository → Entity` 分层。
@@ -77,45 +77,39 @@ javac -version
 mvn -version
 ```
 
-## 2. 创建 MySQL 8 数据库
+## 2. 准备 PostgreSQL
 
-使用管理员账号执行：
+本项目只使用 PostgreSQL。已有数据的操作步骤见 [PostgreSQL 部署与数据导入](docs/POSTGRESQL_SETUP.md)：后端启动自动建表，再通过 DataGrip 执行业务数据 DML。
 
-```text
-sql/mysql8/00_create_database.sql
+复制 `.env.example` 为 `.env`，配置独立 PostgreSQL 管理员密码、应用数据库密码、JWT 和 CORS，再启动数据库：
+
+```bash
+docker compose up -d postgres
 ```
 
-项目启动时，Flyway 会自动执行：
+首次创建数据卷时，`sql/postgresql/10-init.sh` 安装 `vector` 扩展并创建普通应用角色。后端启动后 Flyway 自动执行 `db/postgresql/V17__init_postgresql.sql`，JPA 仅校验表结构。已有非空数据库不会自动 baseline。
 
-```text
-src/main/resources/db/migration/V1__init_schema.sql
-```
-
-后续版本会继续按顺序执行增量迁移，其中 V7 引入管理员人员管理，V8 加固一次性邀请、临时密码、登录锁定和 JWT 会话撤销，V9 扩展任务计划，V12 保存管理员操作审计记录，V13 修正审计状态字段类型，V14 增加系统公告、成员已读状态和意见交流消息，V15 增加昵称唯一键、性别与私有头像元数据，V16 增加代码片段和开发日志的限时分享链接。
-
-> V8 上线提示：迁移后，V8 之前签发的 JWT 因不含 `auth_version` 会统一失效，用户需要重新登录；V7 中尚未注册的旧邀请没有可交付的一次性 Token，管理员需要在人员管理页为这些邮箱重新生成邀请链接。
-
-如果你希望手动创建所有表，也可以在 `devnest` 数据库中直接执行该 Flyway SQL 文件。配置中的 `baseline-on-migrate` 可以兼容已手动建表的开发数据库。
+PostgreSQL 使用持久化 `postgres-data` 卷。以后集成 RAG 时再根据 embedding 模型增加分块、向量列及 HNSW 索引。
 
 ## 3. 配置数据库与 JWT
 
 推荐在 IDEA 的 Run Configuration → Environment variables 中填写：
 
 ```text
-DB_URL=jdbc:mysql://127.0.0.1:3306/devnest?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&useSSL=false&allowPublicKeyRetrieval=true
+DB_URL=jdbc:postgresql://127.0.0.1:5432/devnest
 DB_USERNAME=devnest
 DB_PASSWORD=你的数据库密码
 JWT_SECRET_BASE64=你的Base64密钥
 ```
 
-全新空数据库首次启动时还必须临时配置初始管理员：
+默认 `BOOTSTRAP_ADMIN_REQUIRED=false`，允许空库启动后手动导入已有账号，此时初始管理员邮箱和密码保持为空。如果完全从零使用、不导入数据，可临时配置初始管理员：
 
 ```text
 BOOTSTRAP_ADMIN_EMAIL=你的管理员邮箱
 BOOTSTRAP_ADMIN_PASSWORD=至少16位的高强度随机密码
 ```
 
-默认 `BOOTSTRAP_ADMIN_REQUIRED=true`，所以空数据库没有同时配置这两个变量时后端会拒绝启动并给出明确错误。只有数据库完全没有账号时才会创建该管理员。首次登录会强制改密；改密完成后立即从部署环境删除这两个变量，后续启动不会再次创建或提升管理员。
+只有数据库完全没有账号时才会创建该管理员。首次登录会强制改密；改密完成后从部署环境删除这两个变量，后续启动不会再次创建或提升管理员。
 
 生成安全的 JWT 密钥：
 
@@ -203,10 +197,10 @@ Flutter Web 本地开发地址需要加入 `CORS_ALLOWED_ORIGINS`。
 
 - 必须替换默认 `JWT_SECRET_BASE64`。
 - 不要提交数据库密码或 `application-local.yml`。
-- 云 MySQL 不应向公网开放 `3306`，只允许后端服务器访问。
-- 生产数据库连接应启用 TLS，并删除 URL 中的 `useSSL=false`。
+- PostgreSQL 不应向公网开放 `5432`，只允许后端服务器访问。
+- 外部生产数据库连接使用 TLS（`sslmode=verify-full`）并配置可信 CA。
 - 将 CORS 来源限制为真实网站域名。
-- 使用最小权限 MySQL 应用账号，不要使用 `root`。
+- 使用普通 PostgreSQL 应用账号，不要使用 `postgres` 超级用户。
 - 为数据库配置备份、监控和恢复演练。
 
 ## 下一阶段

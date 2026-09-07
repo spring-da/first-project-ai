@@ -10,10 +10,10 @@
 - Spring Boot 4.1 / Spring Framework 7
 - Spring MVC、Bean Validation
 - Spring Security 7、OAuth2 Resource Server、HS256 JWT
-- Spring Data JPA / Hibernate，MySQL 8.4
+- Spring Data JPA / Hibernate，PostgreSQL 17+ / pgvector 0.8.2
 - Flyway 数据库迁移
 - 阿里云 OSS Java SDK 3.18.4，用于 Markdown、意见附件和用户头像图片
-- Maven；测试使用 JUnit、AssertJ、Mockito、Spring Security Test、MockMvc 和 H2 MySQL 模式
+- Maven；测试使用 JUnit、AssertJ、Mockito、Spring Security Test、MockMvc、H2 PostgreSQL 模式和独立 PostgreSQL
 
 常用命令：
 
@@ -23,7 +23,7 @@ mvn -B -ntp package
 mvn spring-boot:run
 ```
 
-运行应用需要数据库、JWT 和 CORS 环境变量；测试在 H2/Mock 中运行，不应连接生产 MySQL 或 OSS。
+运行应用需要数据库、JWT 和 CORS 环境变量；测试在 H2/Mock 中运行，不应连接生产数据库或 OSS。
 
 ## 架构地图
 
@@ -36,10 +36,10 @@ mvn spring-boot:run
 - `image/`：Markdown 图片元数据、文件签名检查、OSS 存取和按账号鉴权读取。
 - `common/`：基础实体、业务异常和统一 `ProblemDetail` 错误响应。
 - `src/main/resources/application.yml`：环境变量映射、JPA/Flyway、multipart、Actuator 和连接池配置。
-- `src/main/resources/db/migration/`：按版本递增的生产数据库变更；当前为 V1–V16。
+- `src/main/resources/db/postgresql/`：PostgreSQL V17 基线，后续从 V18 递增。
 - `src/test/java/`：服务测试与 Spring/MockMvc 集成测试。
 - `docs/`：API、Markdown 导入导出/恢复和 OSS 部署说明。
-- `compose.yml`：MySQL、后端和同级前端的本地/服务器编排入口。
+- `compose.yml`：PostgreSQL/pgvector、后端、前端。
 
 ## 请求与数据流
 
@@ -72,7 +72,7 @@ SecurityFilterChain → JWT 解析 → Controller → Service → Repository →
 - `BaseEntity` 统一使用 36 字符 UUID 和 UTC `Instant` 创建/更新时间；新实体应保持相同策略。
 - JPA 配置为 `ddl-auto=validate`。生产表结构只能通过 Flyway 修改。
 - 已发布的迁移文件不可编辑、重命名或重排。下一次结构变化创建新的顺序迁移，并同步 Entity、索引、测试和文档。
-- MySQL 迁移使用项目现有的 `utf8mb4`、命名、外键和索引风格。对 H2 通过不代表 MySQL 语法一定正确；迁移变更还需在 MySQL 8 验证。
+- PostgreSQL 迁移使用 TEXT、VARCHAR UUID 和 TIMESTAMPTZ(6)，保持外键、账号隔离、版本及唯一约束。H2 通过不能替代真实 PostgreSQL/Flyway 验证。
 - 不得为了让开发环境启动而改成生产 `create`/`update`/`create-drop`。`create-drop` 只允许测试属性使用。
 - 删除、级联和唯一约束必须明确评估已有数据、账号隔离及回滚/备份影响；不要在未获授权时执行生产迁移或破坏性数据命令。
 
@@ -87,7 +87,7 @@ SecurityFilterChain → JWT 解析 → Controller → Service → Repository →
 ### 账号、注册与管理员
 
 - 系统采用一次性 Token 邀请注册。管理员添加邮箱时生成 256 位随机 Token，数据库只保存 SHA-256 摘要；明文 Token 只在创建或轮换响应中显示一次，默认 48 小时过期，注册成功后立即销毁。公开注册只接收邀请 Token，不接收邮箱，所有无效、过期、已使用或邮箱已注册场景使用同一错误信息，避免枚举邮箱状态。
-- V7 会将已注册的 `springda0099@gmail.com` 升级为 `ADMIN`。默认 `BOOTSTRAP_ADMIN_REQUIRED=true`，全新空库必须同时配置 `BOOTSTRAP_ADMIN_EMAIL` 和 16–72 位的 `BOOTSTRAP_ADMIN_PASSWORD` 创建唯一初始管理员，否则应用拒绝启动；只要库中已有账号便永久忽略自举配置，首次登录改密后应从环境中删除两个变量。不得通过公开注册参数、普通资料编辑或客户端提交的角色字段授予管理员权限。
+- 默认 `BOOTSTRAP_ADMIN_REQUIRED=false`，允许空库启动后导入已有账号；导入时保持 `BOOTSTRAP_ADMIN_EMAIL` 和 `BOOTSTRAP_ADMIN_PASSWORD` 为空。不导入数据的全新安装可同时配置邮箱及 16–72 位密码创建唯一初始管理员；只要库中已有账号便永久忽略自举配置，首次登录改密后应从环境中删除两个变量。不得通过公开注册参数、普通资料编辑或客户端提交的角色字段授予管理员权限。
 - `/api/v1/admin/**` 仅允许启用状态的 `ADMIN`。Spring Security 负责路由拦截，Admin Service 仍需重新校验当前账号的存在、启用状态和角色，不能只信任旧 JWT 或前端隐藏菜单。
 - 人员目录同时展示已注册账号和待注册邮箱。管理员可以添加/撤销注册资格、启用/禁用普通账号、重置密码和永久删除普通账号；管理员账号不得被禁用、重置或删除。
 - 每个 JWT 必须携带用户当前 `authVersion`。禁用、管理员重置密码和用户改密都要递增版本，使此前签发的全部 JWT 立即失效；账号状态、角色、临时密码过期时间和强制改密状态仍在每个受保护请求中从数据库读取。
@@ -95,7 +95,7 @@ SecurityFilterChain → JWT 解析 → Controller → Service → Repository →
 - 登录默认每个“邮箱 + 来源地址”每分钟最多 10 次；已注册账号连续失败 5 次后锁定 15 分钟。未知邮箱、密码错误、账号禁用、锁定和临时密码过期应保持相同的认证失败响应，不得泄露账号状态。
 - 强制改密账号只允许访问 `GET /api/v1/auth/me` 和 `PUT /api/v1/auth/password`；完成改密后清除强制标记并签发反映新状态的会话，其他业务接口统一返回 `PASSWORD_CHANGE_REQUIRED`。
 - 永久删除账号会依赖现有外键级联清理该账号的工作区数据，并撤销其注册资格。接口必须保持管理员保护和事务边界；不得提供绕过确认的批量删除或允许删除管理员。
-- 修改本功能时同步检查 `AdminController`、`AdminService`、`AuthService`、`SecurityConfig`、用户实体/DTO、V7 之后的新迁移、`docs/API.md` 和前端人员管理页面。
+- 修改本功能时同步检查 `AdminController`、`AdminService`、`AuthService`、`SecurityConfig`、用户实体/DTO、PostgreSQL 迁移、`docs/API.md` 和前端人员管理页面。
 - 管理员可模拟登录成员工作区并修改全部业务数据。前端复用正常成员页面和按当前工作区隔离的 Store；管理员 JWT 始终保留原身份，通过 `X-Workspace-Owner` 指定目标账户。后端仅在 `@WorkspaceOwner` 业务参数解析器中允许启用的 ADMIN 选择目标，并逐次校验数据库角色；普通成员仍只能访问自己的资源。草稿、通知、图片缓存和异步响应必须按管理员及目标成员隔离，退出时清空工作区并销毁页面缓存。身份认证、改密及人员管理仍以原 JWT 身份执行。
 
 ### Markdown
@@ -118,7 +118,7 @@ SecurityFilterChain → JWT 解析 → Controller → Service → Repository →
 ## 测试与验证
 
 - 业务规则放在最接近的现有 Service 测试中；账号隔离、JWT、HTTP 状态和响应头使用 Spring/MockMvc 集成测试。
-- 数据库测试使用独立 H2 内存库、MySQL 模式、`ddl-auto=create-drop` 和 `flyway.enabled=false`；不要复用开发或生产数据库。
+- 快速数据库测试使用独立 H2 内存库、PostgreSQL 模式、`ddl-auto=create-drop` 和 `flyway.enabled=false`；真实 PostgreSQL 测试使用独立空库和 Flyway，不要复用开发或生产数据库。
 - 外部 OSS 使用 `ImageStorage` 模拟，不在自动测试中使用真实 Bucket 或凭证。
 - 接口变更至少测试：正常路径、参数校验、未登录、其他账号、资源不存在和相关失败清理。
 - 完成修改前至少运行：
@@ -136,4 +136,10 @@ mvn -B -ntp package
 - 新增/修改端点时更新 `docs/API.md`；Markdown 契约更新 `docs/MARKDOWN_API.md`，图片/OSS 更新 `docs/MARKDOWN_IMAGES.md`。
 - Docker 构建先运行 Maven package，再以非 root 用户启动 JAR；不要绕过 Dockerfile 中的测试/打包和健康检查。
 - `compose.yml` 位于后端仓库，但会构建同级前端目录。跨端改动需要同时验证前端 `npm test && npm run build` 和后端 Maven 测试。
-- 上线前确认：MySQL 不公开暴露、数据库连接启用 TLS、JWT/数据库/OSS 密钥已轮换、CORS 限制到真实域名、Bucket ACL 与 `OSS_PUBLIC_READ` 一致且 RAM 权限最小化；公共读场景仍必须禁止公共写。
+- 上线前确认：PostgreSQL 不公开暴露、数据库连接启用 TLS、JWT/数据库/OSS 密钥已轮换、CORS 限制到真实域名、Bucket ACL 与 `OSS_PUBLIC_READ` 一致且 RAM 权限最小化；公共读场景仍必须禁止公共写。
+
+## PostgreSQL 初始化与数据导入
+
+- 项目只保留 PostgreSQL 配置、驱动、建表脚本和部署服务。操作步骤在 `docs/POSTGRESQL_SETUP.md`：后端启动由 Flyway 建表，再手动执行业务数据 DML。
+- 业务数据 DML 保存在 Git/Docker 排除的 `backups/` 中，不包含 DDL 或 Flyway 历史。导入前检查业务表为空，在同一事务中插入并校验，重复执行不得覆盖数据。用户提供的原始备份不得修改。
+- 真实 PostgreSQL 测试使用 `TEST_POSTGRES_*`；仅指向可丢弃的隔离测试服务，CI 必须执行。新增 PostgreSQL 数据库行为必须在真实 PostgreSQL 上验证。

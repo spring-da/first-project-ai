@@ -5,3 +5,15 @@ target
 *.log
 .env
 src/main/resources/application-local.yml
+src/main/resources/application-prod.yml
+backups
+**/target
+**/.codex-tmp
+**/.codex
+**/.codex-*
+**/codex-*
+**/codex_*
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.env.*

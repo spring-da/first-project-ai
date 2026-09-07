@@ -1,2 +1,0 @@
-ALTER TABLE projects
-    MODIFY COLUMN progress INT NOT NULL DEFAULT 0;

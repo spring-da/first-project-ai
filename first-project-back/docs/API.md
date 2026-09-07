@@ -162,7 +162,7 @@ POST /auth/logout-all
 }
 ```
 
-JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码都会递增版本，因此操作前签发的全部 JWT 会立即失效。重置密码还会设置 `mustChangePassword=true`。永久删除会通过现有 MySQL 外键级联删除该账号的工作区数据，并撤销其注册资格；若以后需要重新注册，管理员必须再次添加该邮箱。管理员账号不能被禁用、重置或删除。
+JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码都会递增版本，因此操作前签发的全部 JWT 会立即失效。重置密码还会设置 `mustChangePassword=true`。永久删除会通过现有 PostgreSQL 外键级联删除该账号的工作区数据，并撤销其注册资格；若以后需要重新注册，管理员必须再次添加该邮箱。管理员账号不能被禁用、重置或删除。
 
 账号邀请、启用、禁用、密码重置、永久删除，以及管理员通过 `X-Workspace-Owner` 发起的成员数据写操作都会保存审计事件。事件仅包含管理员邮箱、目标、资源类型、HTTP 方法、结果和时间，不记录密码、邀请 Token 或成员正文；列表只允许管理员读取并设置 `Cache-Control: no-store`。
 
@@ -278,9 +278,9 @@ Content-Type: application/json
 ```json
 {
   "title": "完成后端 Repository 设计",
-  "content": "使用 Spring Data JPA 隔离 MySQL 数据访问。",
+  "content": "使用 Spring Data JPA 隔离 PostgreSQL 数据访问。",
   "category": "DECISION",
-  "tags": ["Java", "Spring Boot", "MySQL"],
+  "tags": ["Java", "Spring Boot", "PostgreSQL"],
   "pinned": false,
   "domainId": "领域 ID，可为空"
 }

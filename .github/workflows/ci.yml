@@ -25,6 +25,22 @@ jobs:
       - run: npm run test:ui:build
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.2-pg17
+        env:
+          POSTGRES_DB: devnest_test
+          POSTGRES_PASSWORD: integration-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d devnest_test"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: jdbc:postgresql://localhost:5432/devnest_test
+      TEST_POSTGRES_USERNAME: postgres
+      TEST_POSTGRES_PASSWORD: integration-test-only
+      TEST_PGVECTOR: 'true'
     defaults:
       run:
         working-directory: first-project-back

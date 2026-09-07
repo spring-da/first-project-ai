@@ -23,7 +23,7 @@ public class MarkdownDocumentEntity extends BaseEntity {
     @Column(name = "file_name", nullable = false, length = 255)
     private String fileName;
 
-    @Column(nullable = false, columnDefinition = "longtext")
+    @Column(nullable = false, columnDefinition = "text")
     private String content;
 
     @Column(name = "is_favorite", nullable = false)

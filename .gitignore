@@ -2,7 +2,6 @@
 **/target/
 **/dist/
 **/.ui-test-dist/
-**/.codex-tmp/
 **/.idea/
 **/.env
 **/.env.*
@@ -12,4 +11,13 @@
 **/*.log
 **/*.tsbuildinfo
 **/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/backups/
+
+# Local Codex tools, temporary scripts, rehearsal data and test artifacts.
+**/.codex/
+**/.codex-*
+**/codex-*
+**/codex_*
 .DS_Store

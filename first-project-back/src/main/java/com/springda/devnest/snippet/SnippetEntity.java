@@ -23,7 +23,7 @@ public class SnippetEntity extends BaseEntity {
     @Column(nullable = false, length = 80)
     private String language;
 
-    @Column(nullable = false, columnDefinition = "longtext")
+    @Column(nullable = false, columnDefinition = "text")
     private String code;
 
     @Column(name = "is_favorite", nullable = false)

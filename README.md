@@ -13,7 +13,7 @@ Vue 3 + TypeScript 前端和 Spring Boot + Java 26 后端，统一存放在此�
 
 ## 本地运行
 
-安装 Node.js 24、Java 26、Maven 和 MySQL 8。配置后端环境变量请参考 [后端说明](first-project-back/README.md)；不要将真实配置或密钥提交到 Git。
+安装 Node.js 24、Java 26、Maven 和 PostgreSQL 17+（可带 pgvector）。配置后端环境变量请参考 [后端说明](first-project-back/README.md)；不要将真实配置或密钥提交到 Git。
 
 ```powershell
 cd first-project-back
@@ -45,12 +45,14 @@ mvn -B -ntp verify
 
 ## 部署
 
-复制 `first-project-back/.env.example` 为同目录 `.env`，填写数据库、JWT、CORS 和初始管理员等配置，再运行：
+部署与已有数据导入见 [PostgreSQL 操作步骤](first-project-back/docs/POSTGRESQL_SETUP.md)：启动项目自动建表，再用 DataGrip 执行转换后的业务数据 DML。
+
+复制 `first-project-back/.env.example` 为同目录 `.env`，填写 PostgreSQL、JWT、CORS 和 OSS 配置。导入已有账号时保持初始管理员邮箱和密码为空，再运行：
 
 ```powershell
-docker compose --project-directory first-project-back -f first-project-back/compose.yml up -d --build
+docker compose --project-directory first-project-back -f first-project-back/compose.yml up -d --build --remove-orphans
 ```
 
-本次功能需要前后端一起更新；Flyway 会自动执行到 V16，在 V14 的公告与意见交流表、V15 的昵称与头像资料之外，增加代码片段和开发日志的安全分享链接。前端访问端口为 8000。
+新数据库由 Flyway 执行 PostgreSQL V17 基线，包含现有全部业务表。Compose 启用 pgvector，为后续 RAG 向量检索提供数据库基础。前端访问端口为 8000。
 
 接口契约见 [API 文档](first-project-back/docs/API.md)。

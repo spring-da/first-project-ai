@@ -62,6 +62,7 @@
 **/codex-*
 **/codex_*
 **/.superpowers/
+**/.worktrees/
 
 # Operating-system metadata.
 .DS_Store

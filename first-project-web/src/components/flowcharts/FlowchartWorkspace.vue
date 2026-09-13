@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
-import { ArrowLeft, Save, Share2, Download, History, Pencil, Workflow, Circle, Square, Diamond, Database, Type, RectangleHorizontal, ArrowRightLeft, LayoutTemplate, CloudCheck, LoaderCircle, AlertCircle, RotateCcw, FileJson, Smartphone, Heart, Search, ChevronDown } from 'lucide-vue-next'
+import { ArrowLeft, Save, Share2, Download, History, Pencil, Workflow, Diamond, Database, LayoutTemplate, CloudCheck, LoaderCircle, AlertCircle, RotateCcw, FileJson, Smartphone, Heart } from 'lucide-vue-next'
 import type { FlowchartDiagram, FlowchartDocument, FlowchartDraft, FlowNode, FlowEdge, FlowNodeKind, FlowchartSummary, FlowchartRevision, FlowchartRevisionDetail } from '../../types/flowcharts'
 import type { KnowledgeDomain } from '../../types'
 import { useAuthStore } from '../../stores/auth'
@@ -13,9 +13,10 @@ import { createFlowchartDraftStorage } from '../../utils/flowchartDrafts'
 import type { LocalFlowchartDraft } from '../../utils/flowchartDrafts'
 import { createClientId } from '../../utils/clientId'
 import { copyDraft, emptyDiagram, createTemplate, exportFlowchartSource, downloadBlob, importFlowchartSource, validateDiagram } from '../../utils/flowcharts'
-import { filterFlowchartShapes, type FlowchartShapeCategory } from '../../utils/flowchartEditor'
+import { defaultWorkbenchPreferences, rememberRecentShape, parseWorkbenchPreferences, toggleWorkbenchPanel, type FlowchartWorkbenchPreferences } from '../../utils/flowchartEditorState'
 import FlowchartProperties from './FlowchartProperties.vue'
 import FlowchartStarter from './FlowchartStarter.vue'
+import NodeLibraryPanel from './NodeLibraryPanel.vue'
 import AppModal from '../AppModal.vue'
 const FlowchartCanvas = defineAsyncComponent(() => import('./FlowchartCanvas.vue'))
 const ShareDialog = defineAsyncComponent(() => import('../ShareDialog.vue'))
@@ -40,10 +41,24 @@ const status = computed(() => { void tick.value; return session.value?.status ??
 const error = computed(() => { void tick.value; return session.value?.error ?? '' })
 const doc = computed(() => { void tick.value; return session.value?.document })
 const readOnly = computed(() => !editing.value || smallScreen.value)
-const shapeIcons = { terminal: Circle, rectangle: Square, rounded: RectangleHorizontal, diamond: Diamond, io: ArrowRightLeft, database: Database, text: Type }
-const paletteQuery = ref(''), paletteCategory = ref<FlowchartShapeCategory>('all')
-const paletteCategories: Array<{ key: FlowchartShapeCategory; label: string }> = [{ key: 'all', label: '全部' }, { key: 'flow', label: '流程' }, { key: 'basic', label: '基础' }, { key: 'data', label: '数据' }, { key: 'annotation', label: '标注' }]
-const paletteShapes = computed(() => filterFlowchartShapes(paletteQuery.value, paletteCategory.value))
+const workbenchStorageKey = `devnest-flowchart-workbench:${ownerKey}`
+function readWorkbenchPreferences(): FlowchartWorkbenchPreferences {
+  try { return parseWorkbenchPreferences(localStorage.getItem(workbenchStorageKey)) } catch { return defaultWorkbenchPreferences() }
+}
+const workbenchPreferences = ref(readWorkbenchPreferences())
+function saveWorkbenchPreferences(next: FlowchartWorkbenchPreferences) {
+  workbenchPreferences.value = next
+  try { localStorage.setItem(workbenchStorageKey, JSON.stringify(next)) } catch { /* Panel preferences are optional. */ }
+}
+function createShape(kind: FlowNodeKind) {
+  saveWorkbenchPreferences(rememberRecentShape(workbenchPreferences.value, kind))
+  canvas.value?.add(kind)
+}
+function startShapeDrag(kind: FlowNodeKind, event: DragEvent) {
+  saveWorkbenchPreferences(rememberRecentShape(workbenchPreferences.value, kind))
+  canvas.value?.startDrag(kind, event)
+}
+function toggleNodeLibrary() { saveWorkbenchPreferences(toggleWorkbenchPanel(workbenchPreferences.value, 'library')) }
 const starterTemplates: Array<{ kind: 'sequence' | 'decision' | 'architecture'; title: string; description: string; preview: string }> = [
   { kind: 'sequence', title: '顺序流程', description: '适合线性步骤和标准作业。', preview: '开始  →  处理  →  结束' },
   { kind: 'decision', title: '条件分支', description: '从判断点分成两条路径。', preview: '开始  →  判断  ↗\n             ↘' },
@@ -280,17 +295,7 @@ defineExpose({ canLeave })
     <div v-if="loading" class="flow-loading"><LoaderCircle :size="24" class="spin" />正在打开画布…</div>
     <div v-else-if="loadingError" class="flow-loading" role="alert"><AlertCircle :size="24" />{{ loadingError }}</div>
     <div v-else-if="session" class="flow-body">
-      <aside v-if="!readOnly" class="flow-palette" aria-label="图形库">
-        <div class="flow-palette__heading"><div><h2>图形库</h2><p>拖入画布，或点击添加</p></div><ChevronDown :size="15" aria-hidden="true" /></div>
-        <label class="flow-palette__search"><Search :size="14" aria-hidden="true" /><input v-model="paletteQuery" type="search" placeholder="搜索图形" aria-label="搜索图形" /></label>
-        <div class="flow-palette__tabs" role="tablist" aria-label="图形分类"><button v-for="category in paletteCategories" :key="category.key" type="button" role="tab" :aria-selected="paletteCategory === category.key" :class="{ active: paletteCategory === category.key }" @click="paletteCategory = category.key">{{ category.label }}</button></div>
-        <div v-if="paletteShapes.length" class="flow-palette__grid">
-          <button v-for="shape in paletteShapes" :key="shape.kind" type="button" :aria-label="`添加${shape.label}`" :title="shape.hint" @mousedown.prevent="canvas?.startDrag(shape.kind, $event)" @click="canvas?.add(shape.kind)"><component :is="shapeIcons[shape.kind]" :size="25" :stroke-width="1.4" /><span>{{ shape.label }}</span></button>
-        </div>
-        <p v-else class="flow-palette__empty">没有匹配的图形</p>
-        <button type="button" class="flow-palette__add" @click="canvas?.add('rectangle')"><Square :size="14" />添加处理步骤</button>
-        <small>双击图形编辑文字<br />从连接点拖出连线</small>
-      </aside>
+      <NodeLibraryPanel v-if="!readOnly" :collapsed="workbenchPreferences.libraryCollapsed" :recent-kinds="workbenchPreferences.recentKinds" @create="createShape" @drag-start="startShapeDrag" @toggle="toggleNodeLibrary" />
       <FlowchartCanvas :key="String(readOnly)" ref="canvas" class="flow-workspace__canvas" :diagram="draft.diagram" :readonly="readOnly" :viewport-key="`${ownerKey}:${doc?.id || localId}`" :properties-open="showProperties" @change="diagramChanged" @select="selectionChanged" @edit-label="editSelected" @toggle-properties="toggleProperties" @error="notifyError" />
       <Transition name="flow-properties">
         <FlowchartProperties v-if="!readOnly && showProperties" id="flow-properties-panel" ref="properties" :selected="selected" :nodes="draft.diagram.nodes" :edges="draft.diagram.edges" @change="canvas?.updateCell($event)" @action="canvas?.action($event)" @select="canvas?.selectId($event)" @close="closeProperties" />

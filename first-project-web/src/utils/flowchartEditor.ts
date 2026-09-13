@@ -44,6 +44,10 @@ export const FLOWCHART_SHAPES: FlowchartShapeItem[] = [
   { kind: 'text', label: '文本', category: 'annotation', hint: '说明文字' },
 ]
 
+export function isFlowchartShapeKind(value: unknown): value is FlowNodeKind {
+  return FLOWCHART_SHAPES.some(shape => shape.kind === value)
+}
+
 export function filterFlowchartShapes(query = '', category: FlowchartShapeCategory = 'all'): FlowchartShapeItem[] {
   const normalized = query.trim().toLocaleLowerCase()
   return FLOWCHART_SHAPES.filter(shape => (category === 'all' || shape.category === category) && (!normalized || `${shape.label} ${shape.hint}`.toLocaleLowerCase().includes(normalized)))

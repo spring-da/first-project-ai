@@ -466,9 +466,11 @@ class AccountAdministrationIntegrationTest {
                 "projects", "{\"name\":\"Original\",\"techStack\":[\"Vue\"],\"status\":\"BUILDING\",\"progress\":15,\"nextAction\":\"Continue\"}",
                 "domains", "{\"name\":\"Original\",\"description\":\"Test\",\"sortOrder\":0}",
                 "snippets", "{\"title\":\"Original\",\"language\":\"sql\",\"code\":\"select 1\",\"favorite\":false}",
-                "logs", "{\"title\":\"Original\",\"content\":\"Test\",\"category\":\"LEARNING\",\"tags\":[],\"pinned\":false}");
+                "flowcharts", "{\"title\":\"Original\",\"domainId\":null,\"favorite\":false,\"diagram\":{\"schemaVersion\":1,\"nodes\":[],\"edges\":[]},\"creationKey\":\"11111111-1111-4111-8111-111111111111\"}");
         for (var entry : payloads.entrySet()) {
             var path = "/api/v1/" + entry.getKey();
+            var updateBody = entry.getValue();
+            if (entry.getKey().equals("flowcharts")) updateBody = updateBody.substring(0, updateBody.length()-1) + ",\"expectedVersion\":0}";
             var created = mvc.perform(post(path).with(appJwt(admin)).header("X-Workspace-Owner", user.getId())
                             .contentType(MediaType.APPLICATION_JSON).content(entry.getValue()))
                     .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
@@ -480,14 +482,14 @@ class AccountAdministrationIntegrationTest {
                     .andReturn().getResponse().getContentAsString();
             assertThat(adminList).doesNotContain(id);
             mvc.perform(put(path + "/" + id).with(appJwt(admin)).header("X-Workspace-Owner", user.getId())
-                            .contentType(MediaType.APPLICATION_JSON).content((entry.getKey().equals("tasks") ? entry.getValue().replace("}", ",\"done\":false,\"archived\":false}") : entry.getValue()).replace("Original", "Updated")))
+                            .contentType(MediaType.APPLICATION_JSON).content((entry.getKey().equals("tasks") ? entry.getValue().replace("}", ",\"done\":false,\"archived\":false}") : updateBody).replace("Original", "Updated")))
                     .andExpect(status().isOk());
             assertThat(mvc.perform(get(path).with(appJwt(user))).andReturn().getResponse().getContentAsString())
                     .contains("Updated").doesNotContain("Original");
             mvc.perform(delete(path + "/" + id).with(appJwt(admin))).andExpect(status().isNotFound());
             mvc.perform(delete(path + "/" + id).with(appJwt(admin)).header("X-Workspace-Owner", user.getId()))
                     .andExpect(status().isNoContent());
-            if (entry.getKey().equals("snippets") || entry.getKey().equals("logs")) {
+            if (entry.getKey().equals("snippets") || entry.getKey().equals("flowcharts")) {
                 mvc.perform(get(path + "/trash").with(appJwt(admin)).header("X-Workspace-Owner", user.getId()))
                         .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(id));
                 mvc.perform(post(path + "/" + id + "/restore").with(appJwt(admin)).header("X-Workspace-Owner", user.getId()))
@@ -505,7 +507,7 @@ class AccountAdministrationIntegrationTest {
 
     @Test
     void memberHeaderCannotEscalatePermissionsAndInvalidTargetsFailClosed() throws Exception {
-        for (var path : java.util.List.of("tasks", "projects", "domains", "snippets", "logs", "profile", "markdown-documents")) {
+        for (var path : java.util.List.of("tasks", "projects", "domains", "snippets", "flowcharts", "profile", "markdown-documents")) {
             mvc.perform(get("/api/v1/" + path).header("X-Workspace-Owner", user.getId()))
                     .andExpect(status().isUnauthorized());
             mvc.perform(get("/api/v1/" + path).with(appJwt(user)).header("X-Workspace-Owner", admin.getId()))

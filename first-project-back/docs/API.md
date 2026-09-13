@@ -203,7 +203,7 @@ JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码�
 | 知识领域 | `GET /domains` | `POST /domains` | `PUT /domains/{id}` | `DELETE /domains/{id}` |
 | Markdown 文章 | `GET /markdown-documents` | `POST /markdown-documents` | `PUT /markdown-documents/{id}` | `DELETE /markdown-documents/{id}` |
 | 代码片段 | `GET /snippets` | `POST /snippets` | `PUT /snippets/{id}` | `DELETE /snippets/{id}` |
-| 开发日志 | `GET /logs` | `POST /logs` | `PUT /logs/{id}` | `DELETE /logs/{id}` |
+| 流程图 | `GET /flowcharts` | `POST /flowcharts` | `PUT /flowcharts/{id}` | `DELETE /flowcharts/{id}` |
 | 个人资料 | `GET /profile` | `POST /profile/avatar` | `PUT /profile` | `DELETE /profile/avatar` |
 
 普通成员的所有查询都使用 JWT 中的用户 ID 过滤数据，不能指定 `ownerId`；只有服务端重新确认当前身份为管理员后，才会接受 `X-Workspace-Owner` 代管目标。
@@ -224,20 +224,20 @@ JWT 包含用户当前的 `authVersion`。禁用、重置密码和修改密码�
 
 `scheduledDate` 和 `dueAt` 可为 `null`；未指定日期的任务属于收件箱。创建时省略 `priority` 会按 `NORMAL` 处理。更新请求还要提交 `done` 和 `archived`，完成状态变化时由服务端设置或清除 `completedAt`，客户端不能直接指定完成时间。现有 V9 之前的任务迁移后保留为收件箱，已完成任务使用最后更新时间补齐完成时间。
 
-删除知识领域不会删除片段或日志，已有内容会自动回到“未分类”。删除代码片段或开发日志（`DELETE /snippets/{id}`、`DELETE /logs/{id}`）现在改为移入回收站，普通列表不再返回；恢复用 `POST /snippets/{id}/restore`、`POST /logs/{id}/restore`，彻底删除（只能作用于已在回收站的内容）用 `DELETE /snippets/{id}/permanent`、`DELETE /logs/{id}/permanent`，回收站列表为 `GET /snippets/trash`、`GET /logs/trash`（按删除时间倒序，返回 `id/title/语言或类型/excerpt/domainId/deletedAt`）。回收站内容不会自动清空；恢复时若原目录已被删除，内容会自动回到“未分类”。
+删除知识领域不会删除代码片段或流程图，已有内容自动回到“未分类”。代码片段和流程图删除后进入回收站，分别通过 `/snippets/trash`、`/flowcharts/trash` 查询，`POST /{资源}/{id}/restore` 恢复，`DELETE /{资源}/{id}/permanent` 彻底删除。流程图完整契约见 [FLOWCHART_API.md](FLOWCHART_API.md)。
 
 Markdown 批量导入使用 `POST /markdown-documents/import`（JSON 或 Markdown/ZIP multipart），批量调整目录使用 `PATCH /markdown-documents/bulk-domain`，带图片的可移植 ZIP 导出使用 `POST /markdown-documents/export`。文章所有者还可以通过 `POST /markdown-documents/{id}/shares` 创建带有效期的公开只读链接，通过 `GET /markdown-documents/{id}/shares` 查看记录，并用 `DELETE /markdown-documents/{id}/shares/{shareId}` 撤销；访客使用无需登录的 `GET /public/markdown-shares/{token}` 阅读。请求格式、安全边界与图片分享说明参见 [MARKDOWN_API.md](MARKDOWN_API.md)。
 
-代码片段和开发日志使用相同的限时分享规则。所有者分别通过 `POST /snippets/{id}/shares` 或 `POST /logs/{id}/shares` 创建链接，通过对应的 `GET` 地址查看历史，并使用 `DELETE /snippets/{id}/shares/{shareId}` 或 `DELETE /logs/{id}/shares/{shareId}` 撤销。访客通过无需登录的 `GET /public/knowledge-shares/{token}` 读取只读内容。服务端只保存令牌的 SHA-256 摘要，明文令牌只在创建响应中返回一次；资源进入回收站、链接过期或被撤销后会立即停止公开访问。
+已有代码片段单项公开链接继续有效：`POST/GET /snippets/{id}/shares` 创建或列表，`DELETE /snippets/{id}/shares/{shareId}` 撤销，`GET /public/knowledge-shares/{token}` 公开读取。流程图使用下文共享池与批量外链 API；不提供旧式单项分享端点。旧开发日志单项公开链接已删除。
 
-统一知识列表可通过 `PATCH /knowledge-items/bulk-domain` 将文章、代码片段和开发日志批量移动到同一目录。一次最多提交 100 条，三类资源都会按 JWT 所有者校验；目标目录不存在、任一内容不存在或文章版本冲突时，整批事务回滚。文章必须提交 `expectedVersion`，代码片段和日志可省略：
+统一知识列表可通过 `PATCH /knowledge-items/bulk-domain` 将文章、代码片段和流程图批量移动到同一目录。一次最多提交 100 条，三类资源都会按 JWT 所有者校验；目标目录不存在、任一内容不存在或文章/流程图版本冲突时，整批事务回滚。文章和流程图必须提交 `expectedVersion`，代码片段可省略：
 
 ```json
 {
   "items": [
     { "type": "DOCUMENT", "id": "文章 ID", "expectedVersion": 3 },
     { "type": "SNIPPET", "id": "代码片段 ID" },
-    { "type": "LOG", "id": "开发日志 ID" }
+    { "type": "FLOWCHART", "id": "流程图 ID", "expectedVersion": 0 }
   ],
   "domainId": "目标目录 ID；传 null 表示未分类"
 }
@@ -273,20 +273,19 @@ Content-Type: application/json
 }
 ```
 
-## 示例：新增开发日志
+## 示例：新增流程图
+
+`POST /flowcharts`，完整节点、连线、校验与历史契约见 [FLOWCHART_API.md](FLOWCHART_API.md)。
 
 ```json
 {
-  "title": "完成后端 Repository 设计",
-  "content": "使用 Spring Data JPA 隔离 PostgreSQL 数据访问。",
-  "category": "DECISION",
-  "tags": ["Java", "Spring Boot", "PostgreSQL"],
-  "pinned": false,
-  "domainId": "领域 ID，可为空"
+  "title": "采购审批",
+  "domainId": null,
+  "favorite": false,
+  "creationKey": "11111111-1111-4111-8111-111111111111",
+  "diagram": { "schemaVersion": 1, "nodes": [], "edges": [] }
 }
 ```
-
-日志类型：`PROBLEM`、`DECISION`、`LEARNING`、`IDEA`。
 
 项目状态：`PLANNING`、`BUILDING`、`PAUSED`、`COMPLETED`。
 
@@ -308,6 +307,41 @@ Content-Type: application/json
 ```
 
 账户状态过滤器还会设置稳定错误码：`ACCOUNT_UNAVAILABLE` 表示账号已禁用或删除；`SESSION_REVOKED` 表示 JWT 已因安全操作失效；`PASSWORD_CHANGE_REQUIRED` 表示必须先修改管理员重置的临时密码；`TEMPORARY_PASSWORD_EXPIRED` 表示临时密码已过期。登录突发限流返回 `429`、`Retry-After` 响应头以及 `LOGIN_RATE_LIMITED`。
+
+## 共享池与批量外链
+
+`/api/v1/sharing/**` 需要有效登录并使用 `@WorkspaceOwner` 解析当前工作区。发布新分享和面向读者的读取要求作者启用；管理操作仅能作用于当前工作区自己的分享。启用管理员可通过已验证的 `X-Workspace-Owner` 管理禁用成员的分享：查询外链及条目、查看 `mine=true` 的共享池记录、撤下共享池、移除条目或撤销链接。该管理权限不恢复正文/图片的读者访问，也不允许为禁用成员新建分享；禁用成员自己的旧 JWT 仍返回 401。所有共享响应（包括错误）设置 `Cache-Control: no-store`，公开集合接口额外设置 `Referrer-Policy: no-referrer`。
+
+内容类型为 `MARKDOWN`、`SNIPPET`、`FLOWCHART`，引用格式为 `{"type":"MARKDOWN","id":"资源 UUID"}`。一次发布或生成链接支持 1–100 项混合内容，禁止重复引用。引用不存在、属于其他账号或已在回收站时返回 404，整批失败，不留下部分发布或半成品链接。
+
+| 方法与路径（均以 `/api/v1` 为前缀） | 请求 / 响应 |
+| --- | --- |
+| `POST /sharing/pool` | `{items: Reference[]}`；201 `{publishedCount,existingCount}`。重复发布已有有效条目只增加 `existingCount`。 |
+| `GET /sharing/pool` | `page=0&size=20&q=&type=&mine=false`；`{items:PoolSummary[],total,page,size}`。按分享时间、ID 降序稳定分页，标题/正文/作者不区分大小写搜索。 |
+| `GET /sharing/pool/{id}` | `SharedContent`，每次读取最新已保存正文。 |
+| `GET /sharing/pool/{id}/images/{imageId}` | 当前单篇正文引用、且属于原作者的图片二进制。 |
+| `POST /sharing/pool/revoke` | `{ids:string[]}`；204。支持 1–100 个共享条目 ID，原子校验所属工作区，可重复撤下。 |
+| `POST /sharing/links` | `{title,items:Reference[],expiresAt}`；201 `{id,token,title,expiresAt,createdAt}`。标题 1–200 字；客户端默认 7 天、允许选择 1–365 天；服务端验证截止时间晚于当前且不超过 365 天。 |
+| `GET /sharing/links` | `page=0&size=20&q=`；`{items:LinkSummary[],total,page,size}`，按创建时间、ID 降序；`q` 搜索集合标题。 |
+| `GET /sharing/links/{id}` | `{link:LinkSummary,items:[{id,resourceType,resourceId,title,removedAt,available}]}`。移除或原文消失的条目保留在管理目录中。 |
+| `DELETE /sharing/links/{id}` | 204，撤销整条链接，可重复执行。 |
+| `POST /sharing/links/revoke` | `{ids:string[]}`；204，原子批量撤销 1–100 条本人链接。 |
+| `DELETE /sharing/links/{id}/items/{itemId}` | 204，移除当前集合中的一项，可重复执行，不影响其他集合或共享池。 |
+| `GET /public/share-bundles/{token}` | 无需登录；`{title,expiresAt,items:[{id,resourceType,title}]}`，只返回可用项摘要。 |
+| `GET /public/share-bundles/{token}/items/{itemId}` | 无需登录；`SharedContent`，条目必须属于当前链接且仍可用。 |
+| `GET /public/share-bundles/{token}/items/{itemId}/images/{imageId}` | 无需登录；验证令牌、条目、当前正文引用及图片作者后返回二进制。 |
+
+`PoolSummary` 为 `{id,resourceType,title,excerpt,authorName,sharedAt,updatedAt,mine}`；`excerpt` 最多 240 字符。`mine=true` 是本人分享管理视图，可供管理员查看禁用成员的未撤下记录；面向成员的普通共享池始终排除禁用作者。`SharedContent` 为 `{id,resourceType,title,content,language,category,tags,updatedAt}`，其中 `id` 为共享条目 ID，非原文 ID。`language`/`category` 不适用时为 `null`，`tags` 不适用时为空数组。
+
+`LinkSummary` 为 `{id,title,expiresAt,createdAt,revokedAt,active,itemCount}`。`itemCount` 是未移除且原文仍有效的条目数；`active` 还要求作者启用、未撤销、未到期且至少有一个有效条目。链接已移除最后一项、全部原文失效、作者禁用/删除、令牌无效、撤销或到期时，公开请求统一返回 404。页码须非负，每页 1–100 条，搜索文本最多 200 字；SQL 对 `%`、`_` 按普通字符搜索。
+
+新链接使用 256 位随机令牌，数据库仅保存 SHA-256 摘要，明文只在创建响应显示一次，管理目录不返回令牌或摘要。共享池撤下与外链撤销互不影响。内容后续保存会同步到所有仍有效的分享。删除原文会递增分享代次，终止旧共享池条目、集合中的旧条目及旧单篇外链；恢复后需要主动重新发布，旧集合不会自动加入恢复后的内容。删除领域仅取消目录归属，不删除原文，也不撤销分享。
+
+原 `markdown-documents/{id}/shares`、`snippets/{id}/shares`、`logs/{id}/shares` 和相应匿名单篇接口继续保留；旧链接也遵循作者启用和删除后不复活的规则。共享原文无法收回接收者已保存的副本。
+
+图片权限通过 CommonMark 图片节点解析，支持可选标题、尖括号目标及引用式图片；普通链接、代码示例、原始 HTML 和非精确托管路径不授予图片权限，新旧分享使用同一解析器。图片仍须属于原作者且属于当前选中的单篇内容。
+
+Flyway `V18` 新增共享表、索引、分享代次及代码片段/日志内部乐观锁版本。并发的旧保存、删除或恢复请求遇到版本变化返回 409，防止旧事务覆盖分享代次；客户端保留本地内容并重新加载。账号删除通过外键级联清理共享池、集合及集合条目。已有回收站内容的代次在迁移时递增，以免历史链接在恢复后意外重新生效。迁移不修改原文正文；在隔离 PostgreSQL 上验证后按常规部署流程执行。
 
 ## 健康检查
 
@@ -343,3 +377,5 @@ Content-Type: application/json
 
 {"title":"整理成员知识库","sortOrder":0,"scheduledDate":null,"dueAt":null,"priority":"NORMAL"}
 ```
+
+流程图共享详情新增 `diagram` JSON 对象，`content` 是节点/连线标签提取文本；其他共享类型的 `diagram` 为 null。

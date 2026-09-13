@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { AlertCircle, BookOpen, Clock3, Code2, LoaderCircle, Moon, Sun } from 'lucide-vue-next'
+import { AlertCircle, Clock3, Code2, LoaderCircle, Moon, Sun } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import AppLogo from '../components/AppLogo.vue'
-import LinkedText from '../components/LinkedText.vue'
 import { getPublicKnowledgeShare } from '../services/knowledgeShares'
 import { useThemeStore } from '../stores/theme'
-import type { LogCategory, PublicKnowledgeShare } from '../types'
+import type { PublicKnowledgeShare } from '../types'
 import { highlightCode } from '../utils/codeHighlight'
 
 const route = useRoute()
@@ -21,9 +20,6 @@ const isSnippet = computed(() => resource.value?.resourceType === 'SNIPPET')
 const highlightedCode = computed(() => resource.value && isSnippet.value
   ? highlightCode(resource.value.content, resource.value.language)
   : '')
-const categoryLabels: Record<LogCategory, string> = {
-  PROBLEM: '问题解决', DECISION: '技术决策', LEARNING: '学习记录', IDEA: '灵感想法',
-}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -63,7 +59,7 @@ onBeforeUnmount(() => {
   <div class="public-knowledge-page">
     <header class="public-share-bar">
       <AppLogo />
-      <div class="public-share-badge"><Code2 v-if="isSnippet" :size="15" /><BookOpen v-else :size="15" />公开只读分享</div>
+      <div class="public-share-badge"><Code2 v-if="isSnippet" :size="15" />公开只读分享</div>
       <button class="theme-button" type="button" :aria-label="theme.isDark ? '切换到浅色主题' : '切换到深色主题'" @click="theme.toggleTheme">
         <Sun v-if="theme.isDark" :size="18" /><Moon v-else :size="18" />
       </button>
@@ -79,18 +75,15 @@ onBeforeUnmount(() => {
       </section>
       <article v-else-if="resource" class="shared-resource" :class="{ snippet: isSnippet }">
         <header class="resource-headline">
-          <p><Code2 v-if="isSnippet" :size="15" /><BookOpen v-else :size="15" />来自 DevNest 的{{ isSnippet ? '代码片段' : '开发日志' }}分享</p>
+          <p><Code2 v-if="isSnippet" :size="15" />来自 DevNest 的代码片段分享</p>
           <h1>{{ resource.title }}</h1>
           <div>
             <code v-if="isSnippet">{{ resource.language || 'Plain Text' }}</code>
-            <span v-else-if="resource.category">{{ categoryLabels[resource.category] }}</span>
             <span>更新于 {{ formatDate(resource.updatedAt) }}</span>
             <span><Clock3 :size="14" />链接有效至 {{ formatDate(resource.expiresAt) }}</span>
           </div>
-          <div v-if="!isSnippet && resource.tags.length" class="resource-tags"><span v-for="tag in resource.tags" :key="tag">#{{ tag }}</span></div>
         </header>
         <pre v-if="isSnippet" class="shared-code"><code v-html="highlightedCode"></code></pre>
-        <div v-else class="shared-log"><LinkedText :text="resource.content" /></div>
       </article>
     </main>
     <footer>此页面为只读分享 · 链接过期或被撤销后将无法继续访问</footer>
@@ -115,6 +108,5 @@ onBeforeUnmount(() => {
 .resource-tags { margin-top: 15px; }.resource-tags span { color: var(--accent); }
 .shared-code { max-height: calc(100svh - 280px); overflow: auto; margin: 26px 0 0; padding: clamp(20px, 2.7vw, 32px); color: var(--code-text); border: 1px solid var(--border); border-radius: 13px; background: var(--code-bg); font: 14px/1.75 "Cascadia Code", Consolas, monospace; tab-size: 2; }
 .shared-code code { font: inherit; white-space: pre; }
-.shared-log { min-height: 300px; padding: 32px 2px 6px; color: var(--text); font-size: 16px; line-height: 1.9; }
 .public-knowledge-page > footer { padding: 0 18px 28px; color: var(--muted); text-align: center; font-size: 11px; }
 </style>

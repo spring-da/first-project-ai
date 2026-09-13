@@ -8,6 +8,7 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 
 @Entity
+@org.hibernate.annotations.DynamicUpdate // A stale body edit must not overwrite trash/share state.
 @Table(name = "code_snippets")
 public class SnippetEntity extends BaseEntity {
 
@@ -31,6 +32,15 @@ public class SnippetEntity extends BaseEntity {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+
+    @Column(name = "sharing_generation", nullable = false)
+    private long sharingGeneration;
+
+    @jakarta.persistence.Version
+    @Column(nullable = false)
+    private long version;
+
+    public long getSharingGeneration() { return sharingGeneration; }
 
     protected SnippetEntity() {
     }
@@ -58,7 +68,7 @@ public class SnippetEntity extends BaseEntity {
     public boolean isFavorite() { return favorite; }
     public Instant getDeletedAt() { return deletedAt; }
 
-    public void moveToTrash() { deletedAt = Instant.now(); }
+    public void moveToTrash() { deletedAt = Instant.now(); sharingGeneration++; }
 
     public void restoreFromTrash() { deletedAt = null; }
 }

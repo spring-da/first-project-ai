@@ -33,3 +33,15 @@ test('Markdown image cache respects its byte limit and can be cleared on account
   assert.equal(cache.size, 0)
   assert.equal(cache.bytes, 0)
 })
+
+test('expired cached images are discarded and release their byte budget', (context) => {
+  let now = 100
+  context.mock.method(Date, 'now', () => now)
+  const cache = new MarkdownImageCache(10, 3)
+  cache.set('image', new Blob(['pixels']), 50)
+  now = 149
+  assert.ok(cache.get('image'))
+  now = 150
+  assert.equal(cache.get('image'), undefined)
+  assert.equal(cache.bytes, 0)
+})

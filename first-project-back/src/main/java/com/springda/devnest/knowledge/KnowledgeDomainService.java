@@ -12,9 +12,12 @@ import java.util.Locale;
 public class KnowledgeDomainService {
 
     private final KnowledgeDomainRepository domains;
+    private final com.springda.devnest.flowchart.FlowchartRepository flowcharts;
 
-    public KnowledgeDomainService(KnowledgeDomainRepository domains) {
+    public KnowledgeDomainService(KnowledgeDomainRepository domains,
+            com.springda.devnest.flowchart.FlowchartRepository flowcharts) {
         this.domains = domains;
+        this.flowcharts = flowcharts;
     }
 
     @Transactional(readOnly = true)
@@ -47,7 +50,10 @@ public class KnowledgeDomainService {
 
     @Transactional
     public void delete(String ownerId, String id) {
-        domains.delete(find(ownerId, id));
+        var domain = find(ownerId, id);
+        // FK SET NULL alone would silently change a draft without advancing its version.
+        flowcharts.detachDomain(ownerId, id, java.time.Instant.now());
+        domains.delete(domain);
     }
 
     @Transactional(readOnly = true)

@@ -4,7 +4,7 @@ let ownerId: string | null = null
 let lifetime = new AbortController()
 
 export function isWorkspacePath(path: string) {
-  return /^\/(tasks|projects|domains|knowledge-items|snippets|logs|profile|markdown-documents|markdown-images)(?:[/?]|$)/.test(path)
+  return /^\/(tasks|projects|domains|knowledge-items|snippets|flowcharts|profile|markdown-documents|markdown-images|sharing)(?:[/?]|$)/.test(path)
 }
 
 export function setRequestWorkspace(nextOwnerId: string | null) {

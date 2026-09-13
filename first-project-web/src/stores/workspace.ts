@@ -1,3 +1,5 @@
+import type { FlowchartSummary, FlowchartDocument } from '../types/flowcharts'
+import { flowchartApi } from '../services/flowcharts'
 import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
 import { apiDownload, apiRequest, jsonBody } from '../services/api'
@@ -6,13 +8,11 @@ import { settleWorkspaceModules } from '../utils/workspaceLoading'
 import type {
   CodeSnippet,
   DeveloperProfile,
-  DevLogEntry,
   DevProject,
   DevTask,
   DomainDraft,
   KnowledgeBulkMoveItem,
   KnowledgeDomain,
-  LogDraft,
   MarkdownDocument,
   MarkdownDocumentDraft,
   MarkdownDocumentUpdateDraft,
@@ -24,11 +24,10 @@ import type {
   ProjectDraft,
   SnippetDraft,
   TaskDraft,
-  TrashedLog,
   TrashedSnippet,
 } from '../types'
 
-export type WorkspaceModuleKey = 'tasks' | 'projects' | 'snippets' | 'logs' | 'markdownDocuments' | 'domains' | 'profile'
+export type WorkspaceModuleKey = 'tasks' | 'projects' | 'snippets' | 'flowcharts' | 'markdownDocuments' | 'domains' | 'profile'
 
 export interface WorkspaceModuleState {
   loading: boolean
@@ -37,18 +36,18 @@ export interface WorkspaceModuleState {
 }
 
 const workspaceModules: WorkspaceModuleKey[] = [
-  'tasks', 'projects', 'snippets', 'logs', 'markdownDocuments', 'domains', 'profile',
+  'tasks', 'projects', 'snippets', 'flowcharts', 'markdownDocuments', 'domains', 'profile',
 ]
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const tasks = ref<DevTask[]>([])
   const projects = ref<DevProject[]>([])
   const snippets = ref<CodeSnippet[]>([])
-  const logs = ref<DevLogEntry[]>([])
+  const flowcharts = ref<FlowchartSummary[]>([])
   const markdownDocuments = ref<MarkdownDocument[]>([])
   const domains = ref<KnowledgeDomain[]>([])
   const snippetTrash = ref<TrashedSnippet[]>([])
-  const logTrash = ref<TrashedLog[]>([])
+  const flowchartTrash = ref<FlowchartSummary[]>([])
   const profile = ref<DeveloperProfile | null>(null)
   const moduleStates = reactive<Record<WorkspaceModuleKey, WorkspaceModuleState>>(
     Object.fromEntries(workspaceModules.map((module) => [module, { loading: false, loaded: false, error: '' }])) as
@@ -101,9 +100,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           if (epoch === workspaceEpoch) snippets.value = data
           break
         }
-        case 'logs': {
-          const data = await apiRequest<DevLogEntry[]>('/logs')
-          if (epoch === workspaceEpoch) logs.value = data
+        case 'flowcharts': {
+          const data = await flowchartApi.list()
+          if (epoch === workspaceEpoch) flowcharts.value = data
           break
         }
         case 'markdownDocuments': {
@@ -226,31 +225,34 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     snippets.value = snippets.value.filter((item) => item.id !== id)
   }
 
-  async function saveLog(draft: LogDraft, id?: string) {
-    const entry = await runMutation(() => apiRequest<DevLogEntry>(id ? `/logs/${id}` : '/logs', {
-      method: id ? 'PUT' : 'POST', body: jsonBody(draft),
-    }))
-    logs.value = id
-      ? logs.value.map((item) => item.id === entry.id ? entry : item)
-      : [entry, ...logs.value]
+  function acceptFlowchart(document: FlowchartSummary | FlowchartDocument) {
+    const { id, title, domainId, favorite, createdAt, updatedAt, version, deletedAt, nodeCount, edgeCount, excerpt } = document
+    const summary: FlowchartSummary = { id, title, domainId, favorite, createdAt, updatedAt, version, deletedAt, nodeCount, edgeCount, excerpt }
+    flowcharts.value = [summary, ...flowcharts.value.filter(item => item.id !== id)]
   }
-
-  async function deleteLog(id: string) {
-    await runMutation(() => apiRequest<void>(`/logs/${id}`, { method: 'DELETE' }))
-    logs.value = logs.value.filter((item) => item.id !== id)
+  async function deleteFlowchart(id: string) {
+    await runMutation(() => flowchartApi.remove(id))
+    flowcharts.value = flowcharts.value.filter(item => item.id !== id)
+  }
+  async function toggleFlowchartFavorite(item: FlowchartSummary) {
+    const saved = await runMutation(async () => {
+      const current = await flowchartApi.get(item.id)
+      return flowchartApi.update(item.id, { title: current.title, domainId: current.domainId, favorite: !item.favorite, diagram: current.diagram, expectedVersion: item.version, saveMode: 'MANUAL' })
+    })
+    acceptFlowchart(saved)
   }
 
   async function loadItemTrash() {
     const epoch = workspaceEpoch
     error.value = ''
     try {
-      const [snips, logItems] = await Promise.all([
+      const [snips, flowchartItems] = await Promise.all([
         apiRequest<TrashedSnippet[]>('/snippets/trash'),
-        apiRequest<TrashedLog[]>('/logs/trash'),
+        flowchartApi.trash(),
       ])
       if (epoch !== workspaceEpoch) throw new Error('账号已切换，请重新加载工作区。')
       snippetTrash.value = snips
-      logTrash.value = logItems
+      flowchartTrash.value = flowchartItems
     } catch (cause) {
       if (epoch === workspaceEpoch) error.value = cause instanceof Error ? cause.message : '回收站加载失败，请稍后重试'
       throw cause
@@ -269,20 +271,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     snippetTrash.value = snippetTrash.value.filter((item) => item.id !== id)
   }
 
-  async function restoreLogFromTrash(id: string) {
-    const log = await runMutation(() => apiRequest<DevLogEntry>(`/logs/${id}/restore`, { method: 'POST' }))
-    logTrash.value = logTrash.value.filter((item) => item.id !== id)
-    logs.value = [log, ...logs.value.filter((item) => item.id !== id)]
-    return log
+  async function restoreFlowchartFromTrash(id: string) {
+    const saved = await runMutation(() => flowchartApi.restore(id))
+    flowchartTrash.value = flowchartTrash.value.filter(item => item.id !== id)
+    acceptFlowchart(saved)
+    return saved
+  }
+  async function purgeFlowchartFromTrash(id: string) {
+    await runMutation(() => flowchartApi.permanent(id))
+    flowchartTrash.value = flowchartTrash.value.filter(item => item.id !== id)
   }
 
-  async function purgeLogFromTrash(id: string) {
-    await runMutation(() => apiRequest<void>(`/logs/${id}/permanent`, { method: 'DELETE' }))
-    logTrash.value = logTrash.value.filter((item) => item.id !== id)
-  }
-
-  function saveMarkdownDocument(draft: MarkdownDocumentDraft): Promise<MarkdownDocument>
-  function saveMarkdownDocument(draft: MarkdownDocumentUpdateDraft, id: string): Promise<MarkdownDocument>
   async function saveMarkdownDocument(draft: MarkdownDocumentDraft | MarkdownDocumentUpdateDraft, id?: string) {
     if (id && (!('expectedVersion' in draft) || draft.expectedVersion === undefined)) {
       throw new Error('缺少文章版本，请重新打开文章后再保存。')
@@ -394,7 +393,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await settleWorkspaceModules([
       () => loadModule('markdownDocuments'),
       () => loadModule('snippets'),
-      () => loadModule('logs'),
+      () => loadModule('flowcharts'),
     ])
   }
 
@@ -418,7 +417,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await runMutation(() => apiRequest<void>(`/domains/${id}`, { method: 'DELETE' }))
     domains.value = domains.value.filter((item) => item.id !== id)
     snippets.value = snippets.value.map((item) => item.domainId === id ? { ...item, domainId: null } : item)
-    logs.value = logs.value.map((item) => item.domainId === id ? { ...item, domainId: null } : item)
+    await loadModule('flowcharts')
     markdownDocuments.value = markdownDocuments.value.map((item) => item.domainId === id ? { ...item, domainId: null } : item)
   }
 
@@ -449,11 +448,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     tasks.value = []
     projects.value = []
     snippets.value = []
-    logs.value = []
+    flowcharts.value = []
     markdownDocuments.value = []
     domains.value = []
     snippetTrash.value = []
-    logTrash.value = []
+    flowchartTrash.value = []
     profile.value = null
     error.value = ''
     lastSyncedAt.value = null
@@ -461,15 +460,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   return {
-    tasks, projects, snippets, logs, markdownDocuments, domains, profile,
-    snippetTrash, logTrash,
+    tasks, projects, snippets, flowcharts, markdownDocuments, domains, profile,
+    snippetTrash, flowchartTrash,
     moduleStates, loading, hasLoadErrors, mutating, error, lastSyncedAt,
     completedTasks, todayTasks, todayCompletedTasks, taskProgress, activeProjects, favoriteSnippets, primaryProject,
     loadAll, loadModule, createTask, updateTask, deleteTask, saveProject, deleteProject,
-    saveSnippet, deleteSnippet, saveLog, deleteLog, loadMarkdownDocument, saveMarkdownDocument, deleteMarkdownDocument,
+    saveSnippet, deleteSnippet, acceptFlowchart, deleteFlowchart, toggleFlowchartFavorite, loadMarkdownDocument, saveMarkdownDocument, deleteMarkdownDocument,
     importMarkdownDocuments, importMarkdownFiles, moveMarkdownDocumentsToDomain, moveKnowledgeItemsToDomain,
     exportMarkdownDocuments, saveDomain, deleteDomain, saveProfile, uploadProfileAvatar, clearProfileAvatar, clear,
     loadMarkdownTrash, loadMarkdownHistory, loadMarkdownRevision, restoreMarkdownDocument, purgeMarkdownDocument, restoreMarkdownRevision,
-    loadItemTrash, restoreSnippetFromTrash, purgeSnippetFromTrash, restoreLogFromTrash, purgeLogFromTrash,
+    loadItemTrash, restoreSnippetFromTrash, purgeSnippetFromTrash, restoreFlowchartFromTrash, purgeFlowchartFromTrash,
   }
 })

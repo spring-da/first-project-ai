@@ -37,7 +37,7 @@ npm run preview
   - `auth.ts`：JWT 会话及登录/注册。
   - `admin.ts`：管理员人员目录、注册邀请、账号启禁用、密码重置和删除。
   - `communication.ts`：系统公告、成员意见消息、游标分页和回复状态。
-  - `workspace.ts`：任务、项目、目录、文章、片段、日志和资料的远端缓存与 CRUD。
+  - `workspace.ts`：任务、项目、目录、文章、片段、流程图摘要和资料的远端缓存与 CRUD。
   - `notifications.ts`：Toast 和按账号隔离的消息历史。
   - `confirmation.ts`：异步自定义确认框。
   - `search.ts`、`theme.ts`：搜索范围和主题偏好。

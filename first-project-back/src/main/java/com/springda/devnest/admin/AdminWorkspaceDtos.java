@@ -1,7 +1,7 @@
 package com.springda.devnest.admin;
 
 import com.springda.devnest.knowledge.KnowledgeDomainDtos;
-import com.springda.devnest.log.DevLogDtos;
+import com.springda.devnest.flowchart.FlowchartDtos;
 import com.springda.devnest.markdown.MarkdownDocumentDtos;
 import com.springda.devnest.profile.ProfileDtos;
 import com.springda.devnest.project.ProjectDtos;
@@ -35,7 +35,7 @@ public final class AdminWorkspaceDtos {
             List<ProjectDtos.Response> projects,
             List<MarkdownDocumentDtos.SummaryResponse> markdownDocuments,
             List<SnippetDtos.Response> snippets,
-            List<DevLogDtos.Response> logs
+            List<FlowchartDtos.Summary> flowcharts
     ) {
     }
 }

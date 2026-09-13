@@ -4,7 +4,7 @@ import com.springda.devnest.common.ForbiddenException;
 import com.springda.devnest.common.NotFoundException;
 import com.springda.devnest.knowledge.KnowledgeDomainService;
 import com.springda.devnest.image.MarkdownImageService;
-import com.springda.devnest.log.DevLogService;
+import com.springda.devnest.flowchart.FlowchartService;
 import com.springda.devnest.markdown.MarkdownDocumentDtos;
 import com.springda.devnest.markdown.MarkdownDocumentService;
 import com.springda.devnest.profile.ProfileService;
@@ -28,7 +28,7 @@ public class AdminWorkspaceService {
     private final MarkdownDocumentService markdownDocuments;
     private final MarkdownImageService markdownImages;
     private final SnippetService snippets;
-    private final DevLogService logs;
+    private final FlowchartService flowcharts;
 
     public AdminWorkspaceService(
             UserRepository users,
@@ -39,7 +39,7 @@ public class AdminWorkspaceService {
             MarkdownDocumentService markdownDocuments,
             MarkdownImageService markdownImages,
             SnippetService snippets,
-            DevLogService logs
+            FlowchartService flowcharts
     ) {
         this.users = users;
         this.profiles = profiles;
@@ -49,7 +49,7 @@ public class AdminWorkspaceService {
         this.markdownDocuments = markdownDocuments;
         this.markdownImages = markdownImages;
         this.snippets = snippets;
-        this.logs = logs;
+        this.flowcharts = flowcharts;
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +64,7 @@ public class AdminWorkspaceService {
                 projects.list(user.getId()),
                 markdownDocuments.list(user.getId()),
                 snippets.list(user.getId()),
-                logs.list(user.getId()));
+                flowcharts.list(user.getId()));
     }
 
     @Transactional(readOnly = true)

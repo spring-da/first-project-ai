@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { renderMarkdown } from '../utils/markdown'
-import { clearMarkdownImageCache, loadMarkdownImage } from '../services/markdownImages'
+import { loadMarkdownImage } from '../services/markdownImages'
 import { useAuthStore } from '../stores/auth'
 
 const props = withDefaults(defineProps<{
@@ -80,8 +80,7 @@ function clearImages() {
 watch(html, refreshImages, { flush: 'post' })
 watch(() => props.imageBasePath, () => { clearImages(); refreshImages() })
 watch(() => props.authenticatedImages, () => { clearImages(); refreshImages() })
-watch(() => auth.workspaceKey, (userId, previousUserId) => {
-  if (userId !== previousUserId) clearMarkdownImageCache()
+watch(() => [auth.workspaceKey, auth.session?.accessToken], () => {
   clearImages()
   refreshImages()
 })

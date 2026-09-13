@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiRequest, jsonBody } from '../services/api'
+import { captureImageContext, primeImageCache } from '../services/markdownImages'
 import type {
   CommunityMessage,
   CommunityMessagePage,
@@ -93,11 +94,13 @@ export const useCommunicationStore = defineStore('communication', () => {
   }
 
   async function createMessage(content: string, image: File | null) {
+    const imageContext = captureImageContext()
     return mutate(async () => {
       const form = messageForm(content, image)
       const created = await apiRequest<CommunityMessage>('/community/messages', {
         method: 'POST', body: form, timeoutMs: 90_000,
       })
+      if (image && created.imageUrl) primeImageCache(created.imageUrl, image, imageContext)
       messages.value = [created, ...messages.value.filter((item) => item.id !== created.id)]
       return created
     })
@@ -127,12 +130,14 @@ export const useCommunicationStore = defineStore('communication', () => {
   }
 
   async function createReply(messageId: string, content: string, image: File | null) {
+    const imageContext = captureImageContext()
     return mutate(async () => {
       const previousReplyCount = messages.value.find((item) => item.id === messageId)?.replyCount ?? 0
       const created = await apiRequest<CommunityMessage>(
         `/community/messages/${encodeURIComponent(messageId)}/replies`,
         { method: 'POST', body: messageForm(content, image), timeoutMs: 90_000 },
       )
+      if (image && created.imageUrl) primeImageCache(created.imageUrl, image, imageContext)
       messages.value = messages.value.map((item) => item.id === messageId
         ? { ...item, replyCount: item.replyCount + 1 }
         : item)

@@ -1,4 +1,5 @@
 import { resetWorkspaceRequests, setRequestWorkspace } from '../services/workspaceContext'
+import { clearMarkdownImageCache } from '../services/markdownImages'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { apiRequest, jsonBody, readStoredSession, writeStoredSession, SESSION_KEY } from '../services/api'
@@ -11,6 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
   const workspaceKey = computed(() => workspaceMember.value
     ? `admin:${session.value?.user.id}:member:${workspaceMember.value.id}` : session.value?.user.id ?? null)
   function setWorkspaceMember(member: AdminWorkspaceAccount | null) {
+    if (workspaceMember.value?.id !== member?.id) clearMarkdownImageCache()
     setRequestWorkspace(member?.id ?? null)
     workspaceMember.value = member
   }
@@ -26,6 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
       expiresAt: Date.now() + response.expiresInSeconds * 1000,
     }
     writeStoredSession(value)
+    clearMarkdownImageCache()
     session.value = value
   }
 
@@ -122,6 +125,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function clear() {
+    clearMarkdownImageCache()
     resetWorkspaceRequests()
     workspaceMember.value = null
     try { localStorage.removeItem(SESSION_KEY) } catch { /* Logout must work without storage. */ }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { apiDownload } from '../services/api'
+import { loadImage } from '../services/markdownImages'
+import { useAuthStore } from '../stores/auth'
 import { IMAGE_TYPES } from '../utils/markdownEditing'
 
 const props = withDefaults(defineProps<{
@@ -11,6 +12,7 @@ const props = withDefaults(defineProps<{
 }>(), { seed: '', url: null })
 
 const objectUrl = ref('')
+const auth = useAuthStore()
 const failed = ref(false)
 let controller: AbortController | null = null
 const initial = computed(() => Array.from(props.name.trim())[0]?.toUpperCase() || 'D')
@@ -45,26 +47,25 @@ async function load() {
   cleanup()
   failed.value = false
   if (!props.url || externalUrl.value) return
-  controller = new AbortController()
+  const request = new AbortController()
+  controller = request
   try {
-    const { blob } = await apiDownload(props.url, {
-      signal: controller.signal,
-      headers: { Accept: 'image/*, application/problem+json' },
-    })
+    const blob = await loadImage(props.url, request.signal)
+    if (request.signal.aborted || controller !== request) return
     if (!IMAGE_TYPES.includes(blob.type) || blob.size > 5 * 1024 * 1024) throw new Error('头像响应无效')
     objectUrl.value = URL.createObjectURL(blob)
   } catch (error) {
-    if (!(error instanceof DOMException && error.name === 'AbortError')) failed.value = true
+    if (!request.signal.aborted && controller === request && !(error instanceof DOMException && error.name === 'AbortError')) failed.value = true
   }
 }
 
-watch(() => props.url, load, { immediate: true })
+watch(() => [props.url, auth.workspaceKey, auth.session?.accessToken], load, { immediate: true })
 onBeforeUnmount(cleanup)
 </script>
 
 <template>
   <span class="user-avatar" :style="avatarStyle" role="img" :aria-label="`${name}的头像`">
-    <img v-if="imageSource && !failed" :src="imageSource" alt="" @error="failed = true" />
+    <img v-if="imageSource && !failed" :src="imageSource" alt="" decoding="async" @error="failed = true" />
     <span v-else>{{ initial }}</span>
   </span>
 </template>

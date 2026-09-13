@@ -1,9 +1,7 @@
 package com.springda.devnest.share;
 
 import com.jayway.jsonpath.JsonPath;
-import com.springda.devnest.log.DevLogDtos;
-import com.springda.devnest.log.DevLogService;
-import com.springda.devnest.log.LogCategory;
+
 import com.springda.devnest.markdown.MarkdownShareTokenService;
 import com.springda.devnest.snippet.SnippetDtos;
 import com.springda.devnest.snippet.SnippetService;
@@ -45,20 +43,24 @@ class KnowledgeShareIntegrationTest {
 
     @Autowired WebApplicationContext context;
     @Autowired SnippetService snippets;
-    @Autowired DevLogService logs;
     @Autowired KnowledgeShareService shares;
     @Autowired KnowledgeShareRepository repository;
     @Autowired MarkdownShareTokenService tokens;
+    @Autowired com.springda.devnest.user.UserRepository users;
+    private String ownerOne;
+    private String ownerTwo;
     private MockMvc mvc;
 
     @BeforeEach
     void setup() {
+        ownerOne = users.saveAndFlush(new com.springda.devnest.user.UserEntity("one@example.test", "hash", "Owner One")).getId();
+        ownerTwo = users.saveAndFlush(new com.springda.devnest.user.UserEntity("two@example.test", "hash", "Owner Two")).getId();
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
     @Test
     void snippetOwnerCreatesListsAndRevokesAOneTimePublicLink() throws Exception {
-        var snippet = createSnippet("owner-one");
+        var snippet = createSnippet(ownerOne);
         var expiresAt = Instant.now().plus(Duration.ofDays(7));
 
         mvc.perform(post("/api/v1/snippets/{id}/shares", snippet.id())
@@ -67,7 +69,7 @@ class KnowledgeShareIntegrationTest {
                 .andExpect(status().isUnauthorized());
 
         var body = mvc.perform(post("/api/v1/snippets/{id}/shares", snippet.id())
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one")))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expiresAt\":\"" + expiresAt + "\"}"))
                 .andExpect(status().isCreated())
@@ -77,7 +79,7 @@ class KnowledgeShareIntegrationTest {
         String token = JsonPath.read(body, "$.token");
         String shareId = JsonPath.read(body, "$.id");
         assertThat(token).hasSize(43);
-        assertThat(body).doesNotContain("tokenDigest", "owner-one");
+        assertThat(body).doesNotContain("tokenDigest", ownerOne);
         assertThat(repository.findByTokenDigest(tokens.digest(token))).isPresent();
 
         mvc.perform(get("/api/v1/public/knowledge-shares/{token}", token))
@@ -89,17 +91,17 @@ class KnowledgeShareIntegrationTest {
                 .andExpect(jsonPath("$.content").value("const cursor = 'next';"));
 
         mvc.perform(get("/api/v1/snippets/{id}/shares", snippet.id())
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one"))))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(shareId))
                 .andExpect(jsonPath("$[0].active").value(true))
                 .andExpect(jsonPath("$[0].token").doesNotExist());
 
         mvc.perform(delete("/api/v1/snippets/{resourceId}/shares/{shareId}", snippet.id(), shareId)
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-two"))))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerTwo))))
                 .andExpect(status().isNotFound());
         mvc.perform(delete("/api/v1/snippets/{resourceId}/shares/{shareId}", snippet.id(), shareId)
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one"))))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne))))
                 .andExpect(status().isNoContent());
         mvc.perform(get("/api/v1/public/knowledge-shares/{token}", token))
                 .andExpect(status().isNotFound())
@@ -107,27 +109,11 @@ class KnowledgeShareIntegrationTest {
     }
 
     @Test
-    void devLogCanBeSharedAndTrashedOrExpiredContentCannotBeRead() throws Exception {
-        var log = createLog("owner-one");
-        var response = shares.create("owner-one", KnowledgeResourceType.DEV_LOG, log.id(),
-                new KnowledgeShareDtos.CreateRequest(Instant.now().plus(Duration.ofDays(2))));
-
-        mvc.perform(get("/api/v1/public/knowledge-shares/{token}", response.token()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.resourceType").value("DEV_LOG"))
-                .andExpect(jsonPath("$.title").value("Share rollout"))
-                .andExpect(jsonPath("$.category").value("DECISION"))
-                .andExpect(jsonPath("$.tags[0]").value("release"))
-                .andExpect(jsonPath("$.content").value("Publish the read-only link after verification."));
-
-        logs.delete("owner-one", log.id());
-        mvc.perform(get("/api/v1/public/knowledge-shares/{token}", response.token()))
-                .andExpect(status().isNotFound());
-
-        var snippet = createSnippet("owner-one");
+    void expiredAndInvalidSnippetLinksCannotBeRead() throws Exception {
+        var snippet = createSnippet(ownerOne);
         var expiredToken = tokens.createToken();
         repository.saveAndFlush(new KnowledgeShareEntity(
-                KnowledgeResourceType.SNIPPET, snippet.id(), "owner-one",
+                KnowledgeResourceType.SNIPPET, snippet.id(), ownerOne,
                 tokens.digest(expiredToken), Instant.now().minusSeconds(1)));
         mvc.perform(get("/api/v1/public/knowledge-shares/{token}", expiredToken))
                 .andExpect(status().isNotFound());
@@ -135,7 +121,7 @@ class KnowledgeShareIntegrationTest {
                 .andExpect(status().isNotFound());
 
         mvc.perform(post("/api/v1/snippets/{id}/shares", snippet.id())
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one")))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expiresAt\":\"" + Instant.now().plus(Duration.ofDays(366)) + "\"}"))
                 .andExpect(status().isBadRequest())
@@ -147,9 +133,4 @@ class KnowledgeShareIntegrationTest {
                 "Cursor example", "TypeScript", "const cursor = 'next';", false, null));
     }
 
-    private DevLogDtos.Response createLog(String ownerId) {
-        return logs.create(ownerId, new DevLogDtos.SaveRequest(
-                "Share rollout", "Publish the read-only link after verification.",
-                LogCategory.DECISION, List.of("release", "sharing"), true, null));
-    }
 }

@@ -58,16 +58,21 @@ class MarkdownShareIntegrationTest {
     @Autowired MarkdownShareTokenService tokens;
     @Autowired MarkdownImageService images;
     @MockitoBean ImageStorage storage;
+    @Autowired com.springda.devnest.user.UserRepository users;
+    private String ownerOne;
+    private String ownerTwo;
     private MockMvc mvc;
 
     @BeforeEach
     void setup() {
+        ownerOne = users.saveAndFlush(new com.springda.devnest.user.UserEntity("one@example.test", "hash", "Owner One")).getId();
+        ownerTwo = users.saveAndFlush(new com.springda.devnest.user.UserEntity("two@example.test", "hash", "Owner Two")).getId();
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
 
     @Test
     void ownerCreatesListsAndRevokesAOneTimePublicLink() throws Exception {
-        var document = createDocument("owner-one", "# Shared note\n\nVisible without an account.");
+        var document = createDocument(ownerOne, "# Shared note\n\nVisible without an account.");
         var expiresAt = Instant.now().plus(Duration.ofDays(7));
 
         mvc.perform(post("/api/v1/markdown-documents/{id}/shares", document.id())
@@ -76,7 +81,7 @@ class MarkdownShareIntegrationTest {
                 .andExpect(status().isUnauthorized());
 
         var body = mvc.perform(post("/api/v1/markdown-documents/{id}/shares", document.id())
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one")))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expiresAt\":\"" + expiresAt + "\"}"))
                 .andExpect(status().isCreated())
@@ -86,7 +91,7 @@ class MarkdownShareIntegrationTest {
         String token = JsonPath.read(body, "$.token");
         String shareId = JsonPath.read(body, "$.id");
         assertThat(token).hasSize(43);
-        assertThat(body).doesNotContain("tokenDigest", "owner-one");
+        assertThat(body).doesNotContain("tokenDigest", ownerOne);
         assertThat(shareRepository.findByTokenDigest(tokens.digest(token))).isPresent();
 
         mvc.perform(get("/api/v1/public/markdown-shares/{token}", token))
@@ -97,17 +102,17 @@ class MarkdownShareIntegrationTest {
                 .andExpect(jsonPath("$.expiresAt").isString());
 
         mvc.perform(get("/api/v1/markdown-documents/{id}/shares", document.id())
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one"))))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(shareId))
                 .andExpect(jsonPath("$[0].active").value(true))
                 .andExpect(jsonPath("$[0].token").doesNotExist());
 
         mvc.perform(delete("/api/v1/markdown-documents/{documentId}/shares/{shareId}", document.id(), shareId)
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-two"))))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerTwo))))
                 .andExpect(status().isNotFound());
         mvc.perform(delete("/api/v1/markdown-documents/{documentId}/shares/{shareId}", document.id(), shareId)
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one"))))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne))))
                 .andExpect(status().isNoContent());
         mvc.perform(get("/api/v1/public/markdown-shares/{token}", token))
                 .andExpect(status().isNotFound())
@@ -116,22 +121,22 @@ class MarkdownShareIntegrationTest {
 
     @Test
     void expiredTrashedInvalidAndExcessivelyLongSharesCannotBeRead() throws Exception {
-        var document = createDocument("owner-one", "Private content");
+        var document = createDocument(ownerOne, "Private content");
         var expiredToken = tokens.createToken();
         shareRepository.saveAndFlush(new MarkdownShareEntity(
-                document.id(), "owner-one", tokens.digest(expiredToken), Instant.now().minusSeconds(1)));
+                document.id(), ownerOne, tokens.digest(expiredToken), Instant.now().minusSeconds(1)));
 
         mvc.perform(get("/api/v1/public/markdown-shares/{token}", expiredToken)).andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/public/markdown-shares/not-a-valid-token")).andExpect(status().isNotFound());
 
-        var valid = shares.create("owner-one", document.id(),
+        var valid = shares.create(ownerOne, document.id(),
                 new MarkdownShareDtos.CreateRequest(Instant.now().plus(Duration.ofDays(1))));
-        documents.delete("owner-one", document.id());
+        documents.delete(ownerOne, document.id());
         mvc.perform(get("/api/v1/public/markdown-shares/{token}", valid.token())).andExpect(status().isNotFound());
 
-        var other = createDocument("owner-one", "Other");
+        var other = createDocument(ownerOne, "Other");
         mvc.perform(post("/api/v1/markdown-documents/{id}/shares", other.id())
-                        .with(jwt().jwt(jwt -> jwt.subject("owner-one")))
+                        .with(jwt().jwt(jwt -> jwt.subject(ownerOne)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expiresAt\":\"" + Instant.now().plus(Duration.ofDays(366)) + "\"}"))
                 .andExpect(status().isBadRequest())
@@ -140,11 +145,11 @@ class MarkdownShareIntegrationTest {
 
     @Test
     void publicLinkReadsOnlyImagesReferencedByTheSharedDocument() throws Exception {
-        var used = images.upload("owner-one", "used.png", PNG);
-        var unused = images.upload("owner-one", "unused.png", PNG);
-        var document = createDocument("owner-one",
+        var used = images.upload(ownerOne, "used.png", PNG);
+        var unused = images.upload(ownerOne, "unused.png", PNG);
+        var document = createDocument(ownerOne,
                 "# Illustrated\n\n![diagram](/api/v1/markdown-images/" + used.id() + ")");
-        var share = shares.create("owner-one", document.id(),
+        var share = shares.create(ownerOne, document.id(),
                 new MarkdownShareDtos.CreateRequest(Instant.now().plus(Duration.ofDays(1))));
         doAnswer(invocation -> {
             ((java.io.OutputStream) invocation.getArgument(1)).write(PNG);

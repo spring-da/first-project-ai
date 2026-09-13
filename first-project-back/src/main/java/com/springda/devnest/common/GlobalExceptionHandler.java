@@ -51,7 +51,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(OptimisticLockingFailureException.class)
     ProblemDetail handleVersionConflict(HttpServletRequest request) {
-        return problem(HttpStatus.CONFLICT, "文章已被更新，请保留本地草稿并重新加载。", request);
+        return problem(HttpStatus.CONFLICT, "内容已被更新，请保留本地草稿并重新加载。", request);
     }
 
     @ExceptionHandler(BadRequestException.class)

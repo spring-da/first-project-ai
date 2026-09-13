@@ -21,6 +21,6 @@ COPY security-headers.conf /etc/nginx/security-headers.conf
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-EXPOSE 8000
+EXPOSE 80 443
 
 CMD ["nginx", "-g", "daemon off;"]

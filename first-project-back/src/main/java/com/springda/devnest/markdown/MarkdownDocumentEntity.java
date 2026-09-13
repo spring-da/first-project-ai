@@ -32,6 +32,11 @@ public class MarkdownDocumentEntity extends BaseEntity {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    @Column(name = "sharing_generation", nullable = false)
+    private long sharingGeneration;
+
+    public long getSharingGeneration() { return sharingGeneration; }
+
     @Version
     @Column(nullable = false)
     private long version;
@@ -69,6 +74,6 @@ public class MarkdownDocumentEntity extends BaseEntity {
     public String getOwnerId() { return ownerId; }
     public Instant getDeletedAt() { return deletedAt; }
     public long getVersion() { return version; }
-    public void moveToTrash() { deletedAt = Instant.now(); }
+    public void moveToTrash() { deletedAt = Instant.now(); sharingGeneration++; }
     public void restoreFromTrash() { deletedAt = null; }
 }

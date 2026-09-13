@@ -1,7 +1,6 @@
 package com.springda.devnest.share;
 
-import com.springda.devnest.log.DevLogEntity;
-import com.springda.devnest.log.LogCategory;
+
 import com.springda.devnest.snippet.SnippetEntity;
 import jakarta.validation.constraints.Future;
 import jakarta.validation.constraints.NotNull;
@@ -40,22 +39,18 @@ public final class KnowledgeShareDtos {
             String title,
             String content,
             String language,
-            LogCategory category,
+            String category,
             List<String> tags,
             Instant createdAt,
             Instant updatedAt,
-            Instant expiresAt
+            Instant expiresAt,
+            tools.jackson.databind.JsonNode diagram
     ) {
         static PublicResponse from(SnippetEntity snippet, KnowledgeShareEntity share) {
             return new PublicResponse(
                     KnowledgeResourceType.SNIPPET, snippet.getTitle(), snippet.getCode(), snippet.getLanguage(),
-                    null, List.of(), snippet.getCreatedAt(), snippet.getUpdatedAt(), share.getExpiresAt());
+                    null, List.of(), snippet.getCreatedAt(), snippet.getUpdatedAt(), share.getExpiresAt(), null);
         }
 
-        static PublicResponse from(DevLogEntity log, KnowledgeShareEntity share) {
-            return new PublicResponse(
-                    KnowledgeResourceType.DEV_LOG, log.getTitle(), log.getContent(), null,
-                    log.getCategory(), log.getTags(), log.getCreatedAt(), log.getUpdatedAt(), share.getExpiresAt());
-        }
     }
 }

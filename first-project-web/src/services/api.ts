@@ -140,7 +140,7 @@ export async function apiRequest<T>(
 
 export async function apiDownload(
   path: string,
-  options: RequestInit & { authenticated?: boolean } = {},
+  options: RequestInit & { authenticated?: boolean; trackActivity?: boolean } = {},
 ): Promise<{ blob: Blob; fileName: string | null }> {
   const context = captureWorkspaceRequest(path, options.authenticated !== false)
   const controller = new AbortController()
@@ -162,7 +162,7 @@ export async function apiDownload(
       if (!session) { expireSession(); throw new ApiError('登录状态已失效，请重新登录', 401) }
       headers.set('Authorization', `${session.tokenType} ${session.accessToken}`)
     }
-    releaseRequest = beginRequest()
+    if (options.trackActivity !== false) releaseRequest = beginRequest()
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       headers,

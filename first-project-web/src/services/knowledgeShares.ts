@@ -1,7 +1,7 @@
 import type { KnowledgeShareLink, KnowledgeShareSecret, PublicKnowledgeShare } from '../types'
 import { apiRequest, jsonBody } from './api'
 
-export type ShareableKnowledgeKind = 'snippets' | 'logs'
+export type ShareableKnowledgeKind = 'snippets'
 
 export function listKnowledgeShares(kind: ShareableKnowledgeKind, resourceId: string) {
   return apiRequest<KnowledgeShareLink[]>(`/${kind}/${resourceId}/shares`)

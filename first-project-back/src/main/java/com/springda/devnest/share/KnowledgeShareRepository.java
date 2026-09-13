@@ -15,8 +15,8 @@ public interface KnowledgeShareRepository extends JpaRepository<KnowledgeShareEn
 
     Optional<KnowledgeShareEntity> findByTokenDigest(String tokenDigest);
 
-    long countByResourceTypeAndResourceIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfter(
-            KnowledgeResourceType resourceType, String resourceId, String ownerId, Instant now);
+    long countByResourceTypeAndResourceIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfterAndResourceGeneration(
+            KnowledgeResourceType resourceType, String resourceId, String ownerId, Instant now, long resourceGeneration);
 
     void deleteAllByResourceTypeAndResourceIdAndOwnerId(
             KnowledgeResourceType resourceType, String resourceId, String ownerId);

@@ -1,5 +1,5 @@
+import type { FlowchartSummary } from './flowcharts'
 export type ProjectStatus = 'PLANNING' | 'BUILDING' | 'PAUSED' | 'COMPLETED'
-export type LogCategory = 'PROBLEM' | 'DECISION' | 'LEARNING' | 'IDEA'
 export type UserRole = 'USER' | 'ADMIN'
 export type ProfileGender = 'MALE' | 'FEMALE' | 'OTHER'
 export type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
@@ -120,7 +120,7 @@ export interface AdminWorkspaceSnapshot {
   projects: DevProject[]
   markdownDocuments: MarkdownDocument[]
   snippets: CodeSnippet[]
-  logs: DevLogEntry[]
+  flowcharts: FlowchartSummary[]
 }
 
 export interface DevTask {
@@ -177,27 +177,7 @@ export interface TrashedSnippet {
   deletedAt: string
 }
 
-export interface TrashedLog {
-  id: string
-  title: string
-  category: LogCategory
-  pinned: boolean
-  domainId: string | null
-  excerpt: string
-  deletedAt: string
-}
 
-export interface DevLogEntry {
-  id: string
-  title: string
-  content: string
-  category: LogCategory
-  tags: string[]
-  pinned: boolean
-  domainId: string | null
-  createdAt: string
-  updatedAt: string
-}
 
 export interface MarkdownDocument {
   id: string
@@ -269,11 +249,11 @@ export type KnowledgeShareLink = MarkdownShareLink
 export type KnowledgeShareSecret = MarkdownShareSecret
 
 export interface PublicKnowledgeShare {
-  resourceType: 'SNIPPET' | 'DEV_LOG'
+  resourceType: 'SNIPPET'
   title: string
   content: string
   language: string | null
-  category: LogCategory | null
+  category: string | null
   tags: string[]
   createdAt: string
   updatedAt: string
@@ -307,7 +287,7 @@ export interface KnowledgeDomain {
 }
 
 export interface KnowledgeBulkMoveItem {
-  type: 'DOCUMENT' | 'SNIPPET' | 'LOG'
+  type: 'DOCUMENT' | 'SNIPPET' | 'FLOWCHART'
   id: string
   expectedVersion?: number
 }
@@ -339,14 +319,6 @@ export interface SnippetDraft {
   domainId: string | null
 }
 
-export interface LogDraft {
-  title: string
-  content: string
-  category: LogCategory
-  tags: string[]
-  pinned: boolean
-  domainId: string | null
-}
 
 export interface DomainDraft {
   name: string

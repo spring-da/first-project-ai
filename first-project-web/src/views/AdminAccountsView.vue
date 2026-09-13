@@ -96,7 +96,7 @@ const auditActionIcons: Record<keyof typeof auditActionLabels, typeof History> =
 const resourceLabels: Record<string, string> = {
   tasks: '任务', projects: '项目', domains: '知识目录', 'knowledge-items': '知识条目',
   'markdown-documents': 'Markdown 文章', 'markdown-images': '文章图片', snippets: '代码片段',
-  logs: '开发日志', profile: '个人资料', invitations: '注册邀请', accounts: '账户',
+  flowcharts: '流程图', logs: '历史开发日志', profile: '个人资料', invitations: '注册邀请', accounts: '账户',
   announcements: '系统公告', 'community-messages': '意见消息',
 }
 
@@ -412,7 +412,7 @@ onMounted(() => load())
 .invite-panel form { width: min(760px, 58%); display: grid; grid-template-columns: 1fr auto; gap: 9px; }
 .invite-panel input { width: 100%; height: var(--control-height); padding: 0 14px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 10px; outline: none; background: var(--panel); }
 .invite-panel input:focus, .account-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.accounts-panel { margin-top: var(--section-gap); border: 1px solid var(--border); border-radius: 15px; overflow: hidden; background: var(--panel); }
+.accounts-panel { --account-list-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) 360px; margin-top: var(--section-gap); border: 1px solid var(--border); border-radius: 15px; overflow: hidden; background: var(--panel); }
 .accounts-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 25px; padding: 22px; border-bottom: 1px solid var(--border); }
 .account-tools { display: flex; align-items: center; gap: 9px; }
 .account-search { width: clamp(220px, 18vw, 360px); display: flex; align-items: center; gap: 7px; padding: 0 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 9px; transition: border-color var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast); }
@@ -422,10 +422,10 @@ onMounted(() => load())
 .filters button:active { transform: scale(.96); }
 .filters button.active { color: var(--accent); background: var(--accent-bg); }
 .account-list { padding: 5px 14px; }
-.account-list-heading { display: grid; grid-template-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) minmax(300px, auto); gap: 14px; padding: 9px 22px; color: var(--muted); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-sunken) 72%, transparent); font-size: var(--font-2xs); font-weight: 700; letter-spacing: .08em; }
+.account-list-heading { display: grid; grid-template-columns: var(--account-list-columns); gap: 14px; padding: 9px 22px; color: var(--muted); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-sunken) 72%, transparent); font-size: var(--font-2xs); font-weight: 700; letter-spacing: .08em; }
 .account-list-heading span:nth-child(3) { padding-left: 8px; }
 .account-list-heading span:last-child { text-align: right; }
-.account-row { display: grid; grid-template-columns: 43px minmax(240px, 1.2fr) minmax(180px, .65fr) minmax(300px, auto); align-items: center; gap: 14px; min-height: 86px; padding: 12px 8px; border-bottom: 1px solid var(--border); transition: background var(--motion-fast), opacity var(--motion-base), transform var(--motion-slow) var(--ease-emphasized); }
+.account-row { display: grid; grid-template-columns: var(--account-list-columns); align-items: center; gap: 14px; min-height: 86px; padding: 12px 8px; border-bottom: 1px solid var(--border); transition: background var(--motion-fast), opacity var(--motion-base), transform var(--motion-slow) var(--ease-emphasized); }
 .account-row:hover { background: color-mix(in srgb, var(--surface-raised) 62%, transparent); }
 .account-row:last-child { border-bottom: 0; }
 .account-row.disabled { opacity: .76; }
@@ -477,7 +477,7 @@ onMounted(() => load())
 .secret-warning { display: flex; align-items: flex-start; gap: 8px; margin: 14px 0 0; color: var(--warning); font-size: var(--font-xs); line-height: 1.55; }
 .secret-warning svg { flex-shrink: 0; }
 .secret-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
-@media (min-width: 1800px) { .admin-overview { grid-template-columns: repeat(3, minmax(200px, .75fr)) minmax(420px, 1.5fr); gap: 16px; } .invite-panel, .accounts-panel > header { padding-inline: 28px; } .account-list { padding-inline: 20px; } .account-list-heading, .account-row { grid-template-columns: 43px minmax(300px, 1.25fr) minmax(220px, .65fr) minmax(340px, auto); column-gap: 20px; } }
-@media (max-width: 1100px) { .admin-overview { grid-template-columns: repeat(3, 1fr); } .admin-overview > p { grid-column: 1 / -1; min-height: auto; } .accounts-panel > header { align-items: stretch; flex-direction: column; } .account-tools { justify-content: space-between; } .account-list-heading { display: none; } .account-row { grid-template-columns: 43px 1fr auto; } .account-status { justify-content: flex-end; } .account-actions { grid-column: 2 / -1; justify-content: flex-start; } }
+@media (min-width: 1800px) { .admin-overview { grid-template-columns: repeat(3, minmax(200px, .75fr)) minmax(420px, 1.5fr); gap: 16px; } .invite-panel, .accounts-panel > header { padding-inline: 28px; } .accounts-panel { --account-list-columns: 43px minmax(300px, 1.25fr) minmax(220px, .65fr) 360px; } .account-list { padding-inline: 20px; } .account-list-heading, .account-row { column-gap: 20px; } }
+@media (max-width: 1180px) { .admin-overview { grid-template-columns: repeat(3, 1fr); } .admin-overview > p { grid-column: 1 / -1; min-height: auto; } .accounts-panel > header { align-items: stretch; flex-direction: column; } .account-tools { justify-content: space-between; } .account-list-heading { display: none; } .account-row { grid-template-columns: 43px 1fr auto; } .account-status { justify-content: flex-end; } .account-actions { grid-column: 2 / -1; justify-content: flex-start; } }
 @media (max-width: 720px) { .admin-overview { grid-template-columns: repeat(3, 1fr); gap: 7px; } .admin-overview > div { min-width: 0; min-height: 105px; padding: 13px 10px; } .admin-overview > div small { font-size: 10px; } .admin-overview > p { grid-column: 1 / -1; padding: 14px; } .invite-panel { align-items: stretch; flex-direction: column; gap: 17px; padding: 19px; } .invite-panel form { width: 100%; grid-template-columns: 1fr; } .account-tools { align-items: stretch; flex-direction: column; } .account-search { width: 100%; } .filters { display: grid; grid-template-columns: repeat(4, 1fr); } .filters button { padding-inline: 3px; } .accounts-panel > header { padding: 18px; } .account-list { padding-inline: 10px; } .account-row { grid-template-columns: 39px minmax(0, 1fr); gap: 10px; padding-block: 15px; } .account-status, .account-actions { grid-column: 2; justify-content: flex-start; } .account-actions { flex-wrap: wrap; } .secret-actions { align-items: stretch; flex-direction: column; } .secret-actions .button { justify-content: center; } }
 </style>

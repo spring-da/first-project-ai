@@ -3,6 +3,10 @@ import { isWorkspacePath } from '../../src/services/workspaceContext'
 // Manual browser regression fixture. It mounts production components, but uses only
 // in-memory storage and synthetic responses. No real account, note or API is accessed.
 import { createApp } from 'vue'
+import { IDBFactory } from 'fake-indexeddb'
+import { createFlowchartDraftStorage } from '../../src/utils/flowchartDrafts'
+import { createFlowchartFixture, seedFlowcharts } from './flowchart-fixture'
+import type { FlowchartFixtureSource } from './flowchart-fixture'
 import { createPinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from '../../src/App.vue'
@@ -13,13 +17,19 @@ import { useAuthStore } from '../../src/stores/auth'
 import { useWorkspaceStore } from '../../src/stores/workspace'
 import { localDateKey } from '../../src/utils/tasks'
 import { installWheelScrollChaining } from '../../src/utils/scrollChaining'
-import type { AuthUser, CodeSnippet, CommunityMessage, DevLogEntry, DevProject, DevTask, KnowledgeDomain, SystemAnnouncement } from '../../src/types'
+import { createSharingFixture, fixtureBundleToken, fixtureSharingImageId } from './sharing-fixture'
+import type { AuthUser, CodeSnippet, CommunityMessage, DevProject, DevTask, KnowledgeDomain, SystemAnnouncement } from '../../src/types'
 import '../../src/style.css'
 
 installWheelScrollChaining()
 
 // Reproduce ordinary HTTP's missing secure-context API even on localhost.
 const scenario = new URLSearchParams(window.location.search)
+const publicBundleScenario = scenario.has('public-bundle') || scenario.has('expired-bundle')
+let sharingFixture: ReturnType<typeof createSharingFixture> | undefined
+let flowchartFixture: ReturnType<typeof createFlowchartFixture> | undefined
+// Production draft schema, fresh in-memory storage; real IndexedDB is never accessed.
+Object.defineProperty(window, 'indexedDB', { configurable: true, value: new IDBFactory() })
 if (scenario.has('no-random-uuid')) {
   Object.defineProperty(window.crypto, 'randomUUID', { configurable: true, value: undefined })
 }
@@ -28,10 +38,15 @@ let loginAttempts = 0
 let saveRequests = 0
 let imageRequests = 0
 let imageReads = 0
+const imageReadCounts = new Map<string, number>()
+const imageDelay = Math.min(3000, Math.max(0, Number(scenario.get('image-delay')) || 0))
 let savePrevented = false
 let multipartValid = true
 const diagnostics = document.createElement('p')
 function updateDiagnostics() {
+  diagnostics.dataset.imageReadCounts = JSON.stringify(Object.fromEntries(imageReadCounts))
+  diagnostics.dataset.flowcharts = JSON.stringify(flowchartFixture?.stats ?? {})
+  diagnostics.dataset.sharing = JSON.stringify(sharingFixture?.stats ?? {})
   diagnostics.textContent = `${import.meta.env.PROD ? '生产构建' : '开发模式'} · randomUUID：${typeof window.crypto.randomUUID === 'function' ? '可用' : '不可用'} · 登录请求：${loginAttempts} · 会话失效事件：${unauthorizedEvents} · 保存请求：${saveRequests} · 保存快捷键已拦截：${savePrevented} · 图片上传：${imageRequests} · 图片读取：${imageReads} · multipart 正确：${multipartValid}`
 }
 updateDiagnostics()
@@ -57,7 +72,7 @@ const fixtureUser: AuthUser = {
   role: scenario.has('admin') || scenario.has('admin-workspace') ? 'ADMIN' : 'USER',
   mustChangePassword: scenario.has('force-password'),
 }
-if (!scenario.has('public-share')) {
+if (!scenario.has('public-share') && !publicBundleScenario) {
   data.set('devnest_web_session_v1', JSON.stringify({ accessToken: 'fixture-only', tokenType: 'Bearer', expiresInSeconds: 86400, expiresAt: Date.now() + 86400000, user: fixtureUser }))
 }
 data.set('devnest_theme_v1', 'light')
@@ -96,7 +111,13 @@ const snippets: CodeSnippet[] = Array.from({ length: knowledgeItemCount }, (_, i
 if (scenario.has('json-editor')) Object.assign(snippets[0]!, { title: 'JSON 结构编辑示例', language: 'JSON', code: '{\n  "requestId": 9223372036854775807,\n  "name": "采购示例",\n  "enabled": true,\n  "data": {\n    "items": [\n      { "id": 1, "name": "测试商品", "price": 12.50 },\n      { "id": 2, "name": "合成数据", "price": 6 }\n    ],\n    "note": null\n  }\n}' })
 let domainSequence = Math.min(80, Math.max(1, Number(scenario.get('directories')) || 1))
 const domains: KnowledgeDomain[] = Array.from({ length: domainSequence }, (_, index) => ({ id: index ? `fixture-domain-${index + 1}` : 'fixture-domain', name: index ? (index === 3 ? '用于验证超长名称与响应式收纳的知识目录' : `知识专题 ${index + 1}`) : '写作与思考', description: index ? `隔离测试目录 ${index + 1}` : '记录想法与开发知识', sortOrder: index, createdAt: now, updatedAt: now }))
-const logs: DevLogEntry[] = Array.from({ length: knowledgeItemCount }, (_, index) => ({ id: index ? `fixture-log-${index + 1}` : 'fixture-log', title: `日志回归示例 ${index + 1}`, content: '只用于测试，不含真实数据。', category: 'LEARNING', tags: ['测试'], domainId: 'fixture-domain', pinned: index % 5 === 0, createdAt: now, updatedAt: now }))
+const { flowcharts, flowchartBodies } = seedFlowcharts(knowledgeItemCount, 'fixture-flowchart', scenario.get('flowchart') === 'large')
+if (publicBundleScenario || scenario.has('shared-pool')) {
+  imageBlobs.set(fixtureSharingImageId, sampleImage)
+  documents[0]!.content = `# 把想法写下来\n\n这是一篇合成分享文章，用来验证匿名阅读与图片加载。\n\n![分享示例图片](/api/v1/markdown-images/${fixtureSharingImageId})\n\n## 阅读与记录\n\n- 内容随原文保存更新\n- 可以从目录切换到代码片段或流程图\n\n\`\`\`typescript\nconst readOnly = true\n\`\`\`\n\n| 内容类型 | 说明 |\n| --- | --- |\n| 文章 | 支持 Markdown 和图片 |\n| 代码 | 保留语法高亮 |\n\n${'把复杂的问题拆开，一次记录一个清楚的想法。\n\n'.repeat(12)}`
+  snippets[0]!.code = '// 合成代码，验证长行和安全渲染\nconst share = { title: "开发知识精选", readOnly: true }\nconst example = "<script>alert(1)</script>"\nconsole.log(share, example)'
+
+}
 const adminDataCount = Math.min(80, Math.max(1, Number(scenario.get('admin-data')) || 1))
 const adminWorkspaceDocuments = Array.from({ length: adminDataCount }, (_, index) => ({
   id: `admin-document-${index + 1}`, title: `成员文章 ${index + 1} · ${index % 2 ? '采购流程记录' : '技术方案说明'}`, fileName: `member-note-${index + 1}.md`,
@@ -104,7 +125,7 @@ const adminWorkspaceDocuments = Array.from({ length: adminDataCount }, (_, index
   excerpt: '用于验证搜索、分页与独立 Markdown 阅读区域。', contentLength: 1200, domainId: 'fixture-domain', favorite: index % 4 === 0, version: 0, createdAt: now, updatedAt: new Date(Date.now() - index * 60000).toISOString(),
 }))
 const adminWorkspaceSnippets = Array.from({ length: adminDataCount }, (_, index): CodeSnippet => ({ id: `admin-snippet-${index + 1}`, title: `成员代码 ${index + 1}`, code: `const memberValue${index + 1} = { enabled: true }\nconsole.log(memberValue${index + 1})`, language: index % 3 === 0 ? 'JSON' : 'TypeScript', domainId: 'fixture-domain', favorite: false, createdAt: now, updatedAt: new Date(Date.now() - index * 70000).toISOString() }))
-const adminWorkspaceLogs = Array.from({ length: adminDataCount }, (_, index): DevLogEntry => ({ id: `admin-log-${index + 1}`, title: `成员日志 ${index + 1}`, content: `排查记录 ${index + 1}，只用于隔离界面测试。`, category: 'LEARNING', tags: ['成员', '测试'], domainId: 'fixture-domain', pinned: false, createdAt: now, updatedAt: new Date(Date.now() - index * 80000).toISOString() }))
+const adminFlowcharts = seedFlowcharts(adminDataCount, 'admin-flowchart')
 const fixtureShareToken = 's'.repeat(43)
 let shareSequence = 1
 let markdownShares = [{ id: 'fixture-share-1', token: fixtureShareToken, expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), createdAt: now, revokedAt: null as string | null, active: true }]
@@ -141,15 +162,61 @@ const fixtureReplies = new Map<string, CommunityMessage[]>([['community-1', [
   { id: 'reply-1', parentId: 'community-1', authorId: 'fixture-friend', authorName: '朋友账户', authorAvatarUrl: null, authorRole: 'USER', content: '赞同，搜索和未读提醒都很实用。', imageUrl: null, replyCount: 0, viewerCanDelete: fixtureUser.role === 'ADMIN', createdAt: new Date(Date.now() - 40000).toISOString() },
   { id: 'reply-2', parentId: 'community-1', authorId: 'ui-fixture', authorName: '界面回归测试', authorAvatarUrl: null, authorRole: 'ADMIN', content: '已经记录到后续计划中，感谢建议。', imageUrl: null, replyCount: 0, viewerCanDelete: true, createdAt: now },
 ]]])
+if (scenario.has('image-performance')) {
+  for (const message of fixtureMessages) message.authorAvatarUrl = '/user-avatars/fixture-friend'
+  for (const message of fixtureMessages.slice(0, 2)) message.imageUrl = '/community/messages/community-2/image'
+  for (const reply of fixtureReplies.get('community-1')!) {
+    reply.authorAvatarUrl = '/user-avatars/fixture-friend'
+    reply.imageUrl = '/community/messages/community-2/image'
+  }
+}
+async function fixtureImageResponse(path: string) {
+  imageReads++
+  imageReadCounts.set(path, (imageReadCounts.get(path) ?? 0) + 1)
+  updateDiagnostics()
+  if (imageDelay) await new Promise((resolve) => setTimeout(resolve, imageDelay))
+  if (scenario.has('image-corrupt') && path === '/community/messages/community-2/image' && imageReadCounts.get(path) === 1) {
+    return new Response(new Blob(['truncated PNG'], { type: 'image/png' }))
+  }
+  return new Response(sampleImage, { headers: { 'Content-Type': 'image/png' } })
+}
 const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
-const memberData = new Map<string, { tasks: typeof tasks; projects: typeof projects; documents: typeof documents; snippets: typeof snippets; logs: typeof logs; domains: typeof domains; profile: { name: string; role: string; bio: string; avatarUrl: string | null; gender: null | 'MALE' | 'FEMALE' | 'OTHER' } }>()
+const memberData = new Map<string, { tasks: typeof tasks; projects: typeof projects; documents: typeof documents; snippets: typeof snippets; flowcharts: typeof flowcharts; flowchartBodies: typeof flowchartBodies; domains: typeof domains; profile: { name: string; role: string; bio: string; avatarUrl: string | null; gender: null | 'MALE' | 'FEMALE' | 'OTHER' } }>()
 for (const account of adminAccounts.filter((item) => item.userId)) {
   memberData.set(account.userId!, {
     tasks: structuredClone(tasks), projects: structuredClone(projects), documents: structuredClone(documents),
-    snippets: structuredClone(snippets), logs: structuredClone(logs), domains: structuredClone(domains),
+    snippets: structuredClone(snippets), flowcharts: structuredClone(flowcharts), flowchartBodies: structuredClone(flowchartBodies), domains: structuredClone(domains),
     profile: { name: account.displayName!, role: 'Independent Developer', bio: '用代码记录成长，把想法构建成作品。', avatarUrl: null, gender: null },
   })
 }
+sharingFixture = createSharingFixture({
+  scenario,
+  sources: (ownerId) => memberData.get(ownerId),
+  owner: (ownerId) => {
+    const account = adminAccounts.find((entry) => entry.userId === ownerId)
+    return account ? { name: account.displayName ?? '测试成员', enabled: account.enabled } : undefined
+  },
+  image: async (path, signal) => {
+    if (holdImages) await new Promise<void>((resolve, reject) => {
+      const release = () => { signal?.removeEventListener('abort', abort); resolve() }
+      const abort = () => {
+        const index = imageReleases.indexOf(release)
+        if (index >= 0) imageReleases.splice(index, 1)
+        reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+      }
+      imageReleases.push(release)
+      signal?.addEventListener('abort', abort, { once: true })
+      if (signal?.aborted) abort()
+    })
+    signal?.throwIfAborted()
+    return fixtureImageResponse(path)
+  },
+  changed: updateDiagnostics,
+})
+flowchartFixture = createFlowchartFixture({
+  scenario, sources: owner => memberData.get(owner), saveFailed: () => failSave, historyFailed: () => failHistory, changed: updateDiagnostics,
+  invalidateShares: (owner, id) => sharingFixture!.invalidateResource(owner, { type: 'FLOWCHART', id }),
+})
 window.fetch = async (input, options = {}) => {
   // Remove exactly one API base prefix. A duplicated `/api/v1` must remain
   // visible so this fixture catches the same broken image URL seen in production.
@@ -158,7 +225,11 @@ window.fetch = async (input, options = {}) => {
   if (target && isWorkspacePath(path) && fixtureUser.role !== 'ADMIN') return json({ detail: '需要管理员权限' }, 403)
   const scoped = memberData.get(target ?? fixtureUser.id)
   if (target && isWorkspacePath(path) && !scoped) return json({ detail: '测试成员不存在' }, 404)
-  const { tasks, projects, documents, snippets, logs, domains, profile } = scoped ?? memberData.get('ui-fixture')!
+  const { tasks, projects, documents, snippets, flowcharts, domains, profile } = scoped ?? memberData.get('ui-fixture')!
+  const sharingResponse = await sharingFixture!.handle(path, options, target ?? fixtureUser.id)
+  if (sharingResponse) return sharingResponse
+  const flowchartResponse = await flowchartFixture!.handle(path, options, target ?? fixtureUser.id)
+  if (flowchartResponse) return flowchartResponse
 
   if (path.startsWith('/announcements/unread')) {
     return json(scenario.has('unread-announcement') ? fixtureAnnouncements.filter((item) => !item.read && item.active) : [])
@@ -187,7 +258,7 @@ window.fetch = async (input, options = {}) => {
     const [pathname, query = ''] = path.split('?')
     const parts = pathname!.split('/')
     const messageId = parts[3]
-    if (parts[4] === 'image' && !options.method) return new Response(sampleImage, { headers: { 'Content-Type': 'image/png' } })
+    if (parts[4] === 'image' && !options.method) return fixtureImageResponse(path)
     if (parts[4] === 'replies' && !options.method) {
       const page = Number(new URLSearchParams(query).get('page') ?? 0)
       const items = fixtureReplies.get(messageId!) ?? []
@@ -303,8 +374,12 @@ window.fetch = async (input, options = {}) => {
         projects: Array.from({ length: adminDataCount }, (_, index) => ({ id: `workspace-project-${index + 1}`, name: `成员项目 ${index + 1}`, description: '用于验证成员项目列表搜索与分页。', techStack: ['Vue', 'TypeScript'], status: 'BUILDING', progress: (index * 7) % 100, nextAction: '继续整理资料', createdAt: now, updatedAt: now })),
         markdownDocuments: adminWorkspaceDocuments.map(({ content: _content, ...document }) => document),
         snippets: adminWorkspaceSnippets,
-        logs: adminWorkspaceLogs,
+        flowcharts: adminFlowcharts.flowcharts,
       })
+    }
+    if (path.includes('/workspace/flowcharts/') && !options.method) {
+      const entry = adminFlowcharts.flowcharts.find(item => item.id === path.split('/').at(-1))
+      return entry ? json({ ...entry, diagram: adminFlowcharts.flowchartBodies.get(entry.id) }) : json({ detail: '测试流程图不存在' }, 404)
     }
     if (path.includes('/workspace/markdown-documents/') && !options.method) {
       const note = adminWorkspaceDocuments.find((item) => item.id === path.split('/').at(-1))
@@ -348,18 +423,18 @@ window.fetch = async (input, options = {}) => {
     return json(moved)
   }
   if (path === '/knowledge-items/bulk-domain' && options.method === 'PATCH') {
-    const request = JSON.parse(String(options.body)) as { items: Array<{ type: 'DOCUMENT' | 'SNIPPET' | 'LOG', id: string, expectedVersion?: number }>, domainId: string | null }
+    const request = JSON.parse(String(options.body)) as { items: Array<{ type: 'DOCUMENT' | 'SNIPPET' | 'FLOWCHART', id: string, expectedVersion?: number }>, domainId: string | null }
     const resolved = request.items.map((item) => {
       if (item.type === 'DOCUMENT') return { item, value: documents.find((document) => document.id === item.id) }
       if (item.type === 'SNIPPET') return { item, value: snippets.find((snippet) => snippet.id === item.id) }
-      return { item, value: logs.find((entry) => entry.id === item.id) }
+      return { item, value: flowcharts.find((entry) => entry.id === item.id) }
     })
     if (resolved.some(({ value }) => !value)) return json({ detail: '测试知识不存在' }, 404)
-    const staleDocument = resolved.find(({ item, value }) => item.type === 'DOCUMENT' && item.expectedVersion !== (value as typeof documents[number]).version)
+    const staleDocument = resolved.find(({ item, value }) => (item.type === 'DOCUMENT' || item.type === 'FLOWCHART') && item.expectedVersion !== (value as typeof documents[number]).version)
     if (staleDocument) return json({ detail: '测试文章版本冲突' }, 409)
     resolved.forEach(({ item, value }) => {
       value!.domainId = request.domainId
-      if (item.type === 'DOCUMENT') (value as typeof documents[number]).version += 1
+      if (item.type === 'DOCUMENT' || item.type === 'FLOWCHART') (value as typeof documents[number]).version += 1
       value!.updatedAt = new Date().toISOString()
     })
     return new Response(null, { status: 204 })
@@ -404,7 +479,7 @@ window.fetch = async (input, options = {}) => {
     if (options.method === 'DELETE') {
       const id = domains[index]!.id
       domains.splice(index, 1)
-      for (const item of [...documents, ...snippets, ...logs]) if (item.domainId === id) Object.assign(item, { domainId: null })
+      for (const item of [...documents, ...snippets, ...flowcharts]) if (item.domainId === id) Object.assign(item, { domainId: null })
       return new Response(null, { status: 204 })
     }
     if (options.method === 'PUT') Object.assign(domains[index]!, JSON.parse(String(options.body)), { updatedAt: now })
@@ -423,7 +498,7 @@ window.fetch = async (input, options = {}) => {
     return json(profile)
   }
   if (path.startsWith('/user-avatars/') && !options.method) {
-    return new Response(sampleImage, { headers: { 'Content-Type': 'image/png' } })
+    return fixtureImageResponse(path)
   }
   if (path === '/projects') return scenario.get('fail-module') === 'projects'
     ? json({ detail: '测试：项目模块暂时不可用。' }, 503) : json(projects)
@@ -433,25 +508,13 @@ window.fetch = async (input, options = {}) => {
     return json(snippet, 201)
   }
   if (path === '/snippets') return json(snippets)
+  if (path === '/snippets/trash') return json([])
   if (path.startsWith('/snippets/')) {
     const index = snippets.findIndex((snippet) => snippet.id === path.split('/')[2])
     if (index < 0) return json({ detail: '测试代码片段不存在' }, 404)
     if (options.method === 'DELETE') { snippets.splice(index, 1); return new Response(null, { status: 204 }) }
     if (options.method === 'PUT') Object.assign(snippets[index]!, JSON.parse(String(options.body)), { updatedAt: new Date().toISOString() })
     return json(snippets[index])
-  }
-  if (path === '/logs' && options.method === 'POST') {
-    const entry: DevLogEntry = { ...JSON.parse(String(options.body)), id: `fixture-log-${++knowledgeSequence}`, createdAt: now, updatedAt: now }
-    logs.unshift(entry)
-    return json(entry, 201)
-  }
-  if (path === '/logs') return json(logs)
-  if (path.startsWith('/logs/')) {
-    const index = logs.findIndex((entry) => entry.id === path.split('/')[2])
-    if (index < 0) return json({ detail: '测试开发日志不存在' }, 404)
-    if (options.method === 'DELETE') { logs.splice(index, 1); return new Response(null, { status: 204 }) }
-    if (options.method === 'PUT') Object.assign(logs[index]!, JSON.parse(String(options.body)), { updatedAt: new Date().toISOString() })
-    return json(logs[index])
   }
   if (path === '/tasks' && options.method === 'POST') {
     const task: DevTask = { ...JSON.parse(String(options.body)), id: `fixture-task-${++taskSequence}`, done: false, completedAt: null, archived: false, createdAt: now, updatedAt: now }
@@ -482,7 +545,20 @@ window.addEventListener('devnest:unauthorized', () => {
   useWorkspaceStore(pinia).clear()
   void router.push({ name: 'login' })
 })
-await router.replace(scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('announcements') ? '/announcements' : scenario.has('messages') ? '/messages' : scenario.has('admin') ? '/admin/accounts' : scenario.has('profile') ? '/profile' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : '/knowledge')
+async function seedRecovery(ownerKey: string, source: FlowchartFixtureSource, stale = false) {
+  const entry = source.flowcharts[0]!, diagram = structuredClone(source.flowchartBodies.get(entry.id)!)
+  diagram.nodes[0]!.label = '本机恢复内容 · 尚未上传'
+  const storage = createFlowchartDraftStorage()
+  await storage.write({ id: 'fixture-recovery-session', ownerKey, documentId: entry.id, creationKey: '11111111-1111-4111-8111-111111111111', baseVersion: stale ? Math.max(0, entry.version - 1) : entry.version, savedAt: new Date().toISOString(), draft: { title: '待恢复的流程图草稿', domainId: entry.domainId, favorite: false, diagram } })
+  storage.close()
+}
+if (scenario.has('flowchart-recovery')) {
+  if (scenario.get('flowchart-recovery') === 'stale') flowchartFixture.remoteEdit('ui-fixture')
+  await seedRecovery('ui-fixture', memberData.get('ui-fixture')!, scenario.get('flowchart-recovery') === 'stale')
+  await seedRecovery('fixture-friend', memberData.get('fixture-friend')!)
+  await seedRecovery('admin:ui-fixture:member:fixture-friend', memberData.get('fixture-friend')!)
+}
+await router.replace(publicBundleScenario ? `/share/bundle/${scenario.has('invalid-bundle') ? 'invalid' : fixtureBundleToken}` : scenario.has('shared-pool') ? '/shared-pool' : scenario.has('public-share') ? `/share/markdown/${scenario.has('invalid-share') ? 'x'.repeat(43) : fixtureShareToken}` : scenario.has('force-password') ? '/change-password' : scenario.has('admin-workspace') ? '/admin/accounts/fixture-friend/workspace' : scenario.has('announcements') ? '/announcements' : scenario.has('messages') ? '/messages' : scenario.has('admin') ? '/admin/accounts' : scenario.has('profile') ? '/profile' : scenario.has('tools') ? '/tools' : scenario.has('dashboard') ? '/' : scenario.has('flowchart') || scenario.has('flowchart-recovery') || scenario.has('flowchart-conflict') ? '/knowledge?type=flowcharts&focus=fixture-flowchart' : '/knowledge')
 app.mount('#app')
 
 const controls = document.createElement('details')
@@ -498,6 +574,19 @@ function button(label: string, action: () => void) {
   node.onclick = action
   controls.append(node)
 }
+button('打开流程图', () => { void router.push('/knowledge?type=flowcharts&focus=fixture-flowchart'); controls.open = false })
+button('模拟其他会话更新流程图', () => { flowchartFixture!.remoteEdit(auth.workspaceUser?.id ?? fixtureUser.id); summary.textContent = '云端版本已更新；当前编辑器保存会冲突' })
+button('切换流程图离线', () => { summary.textContent = `流程图离线：${flowchartFixture!.toggle('offline') ? '开启' : '关闭'}`; window.dispatchEvent(new Event('online')) })
+button('切换流程图 429 限流', () => { summary.textContent = `流程图限流：${flowchartFixture!.toggle('rate') ? '开启' : '关闭'}` })
+button('暂停 / 完成流程图保存响应', () => { summary.textContent = `流程图保存响应：${flowchartFixture!.toggleHold() ? '暂停' : '已完成'}` })
+button('本页打开最新外链', () => { void router.push(`/share/bundle/${sharingFixture!.latestToken}`); controls.open = false })
+button('打开知识广场', () => { void router.push('/shared-pool'); controls.open = false })
+button('撤销当前测试外链', () => { sharingFixture!.revokeCurrent(); window.dispatchEvent(new Event('focus')); controls.open = false })
+button('移除当前外链第一项', () => { sharingFixture!.removeCurrentItem(); window.dispatchEvent(new Event('focus')); controls.open = false })
+button('当前外链 5 秒后到期', () => { sharingFixture!.expireCurrentIn(5); window.dispatchEvent(new Event('focus')); controls.open = false })
+button('切换共享目录加载故障', () => { summary.textContent = `共享目录故障：${sharingFixture!.toggleFailure('list') ? '开启' : '关闭'}` })
+button('切换共享正文加载故障', () => { summary.textContent = `共享正文故障：${sharingFixture!.toggleFailure('content') ? '开启' : '关闭'}` })
+button('切换共享图片加载故障', () => { summary.textContent = `共享图片故障：${sharingFixture!.toggleFailure('images') ? '开启' : '关闭'}` })
 button('切换草稿存储故障', () => { failDrafts = !failDrafts; summary.textContent = `草稿故障：${failDrafts ? '开启' : '关闭'}` })
 button('切换云端保存故障', () => { failSave = !failSave; summary.textContent = `保存故障：${failSave ? '开启' : '关闭'}` })
 button('切换历史加载故障', () => { failHistory = !failHistory; summary.textContent = `历史故障：${failHistory ? '开启' : '关闭'}` })

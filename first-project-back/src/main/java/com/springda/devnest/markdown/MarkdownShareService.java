@@ -4,6 +4,8 @@ import com.springda.devnest.common.BadRequestException;
 import com.springda.devnest.common.ConflictException;
 import com.springda.devnest.common.NotFoundException;
 import com.springda.devnest.image.MarkdownImageService;
+import com.springda.devnest.image.ManagedMarkdownImages;
+import com.springda.devnest.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,26 +19,25 @@ public class MarkdownShareService {
     static final Duration MAX_LIFETIME = Duration.ofDays(365);
     static final int MAX_ACTIVE_LINKS = 20;
     private static final Pattern TOKEN = Pattern.compile("^[A-Za-z0-9_-]{43}$");
-    private static final Pattern MARKDOWN_IMAGE_LINK = Pattern.compile("!\\[[^\\]\\r\\n]*\\]\\(([^\\s)]+)\\)");
-    private static final Pattern MANAGED_IMAGE_TARGET = Pattern.compile(
-            "^/api/v1/markdown-images/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$",
-            Pattern.CASE_INSENSITIVE);
 
     private final MarkdownShareRepository shares;
     private final MarkdownDocumentRepository documents;
     private final MarkdownShareTokenService tokens;
     private final MarkdownImageService images;
+    private final UserRepository users;
 
     public MarkdownShareService(
             MarkdownShareRepository shares,
             MarkdownDocumentRepository documents,
             MarkdownShareTokenService tokens,
-            MarkdownImageService images
+            MarkdownImageService images,
+            UserRepository users
     ) {
         this.shares = shares;
         this.documents = documents;
         this.tokens = tokens;
         this.images = images;
+        this.users = users;
     }
 
     @Transactional
@@ -45,7 +46,8 @@ public class MarkdownShareService {
             String documentId,
             MarkdownShareDtos.CreateRequest request
     ) {
-        requireActiveOwnedDocument(ownerId, documentId);
+        if (users.findById(ownerId).filter(user -> user.isEnabled()).isEmpty()) throw invalidShare();
+        var document = requireActiveOwnedDocument(ownerId, documentId);
         var now = Instant.now();
         var expiresAt = request.expiresAt();
         if (expiresAt == null || !expiresAt.isAfter(now)) {
@@ -54,23 +56,27 @@ public class MarkdownShareService {
         if (expiresAt.isAfter(now.plus(MAX_LIFETIME))) {
             throw new BadRequestException("分享链接的有效期不能超过 365 天。");
         }
-        if (shares.countByDocumentIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfter(documentId, ownerId, now)
+        if (shares.countByDocumentIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfterAndResourceGeneration(documentId, ownerId, now, document.getSharingGeneration())
                 >= MAX_ACTIVE_LINKS) {
             throw new ConflictException("这篇文章已有过多有效分享链接，请先撤销不再使用的链接。");
         }
 
         var token = tokens.createToken();
-        var share = shares.saveAndFlush(new MarkdownShareEntity(
-                documentId, ownerId, tokens.digest(token), expiresAt));
+        var share = new MarkdownShareEntity(documentId, ownerId, tokens.digest(token), expiresAt);
+        share.captureGeneration(document.getSharingGeneration());
+        shares.saveAndFlush(share);
         return MarkdownShareDtos.SecretResponse.from(share, token);
     }
 
     @Transactional(readOnly = true)
     public List<MarkdownShareDtos.SummaryResponse> list(String ownerId, String documentId) {
-        requireActiveOwnedDocument(ownerId, documentId);
+        var document = requireActiveOwnedDocument(ownerId, documentId);
+        boolean enabled = users.findById(ownerId).filter(user -> user.isEnabled()).isPresent();
         var now = Instant.now();
         return shares.findAllByDocumentIdAndOwnerIdOrderByCreatedAtDesc(documentId, ownerId).stream()
-                .map(share -> MarkdownShareDtos.SummaryResponse.from(share, now))
+                .map(share -> new MarkdownShareDtos.SummaryResponse(share.getId(), share.getExpiresAt(),
+                        share.getCreatedAt(), share.getRevokedAt(), enabled && share.isActive(now)
+                        && share.getResourceGeneration() == document.getSharingGeneration()))
                 .toList();
     }
 
@@ -92,7 +98,7 @@ public class MarkdownShareService {
     @Transactional(readOnly = true)
     public MarkdownImageService.ImageContent readImage(String token, String imageId) {
         var resolved = resolve(token);
-        var referencedId = referencedImageId(resolved.document().getContent(), imageId);
+        var referencedId = ManagedMarkdownImages.referencedId(resolved.document().getContent(), imageId);
         if (referencedId == null) throw invalidShare();
         return images.read(resolved.document().getOwnerId(), referencedId);
     }
@@ -101,8 +107,10 @@ public class MarkdownShareService {
         if (token == null || !TOKEN.matcher(token).matches()) throw invalidShare();
         var share = shares.findByTokenDigest(tokens.digest(token)).orElseThrow(this::invalidShare);
         if (!share.isActive(Instant.now())) throw invalidShare();
+        if (users.findById(share.getOwnerId()).filter(user -> user.isEnabled()).isEmpty()) throw invalidShare();
         var document = documents.findByIdAndOwnerId(share.getDocumentId(), share.getOwnerId())
                 .filter(item -> item.getDeletedAt() == null)
+                .filter(item -> item.getSharingGeneration() == share.getResourceGeneration())
                 .orElseThrow(this::invalidShare);
         return new ResolvedShare(share, document);
     }
@@ -111,16 +119,6 @@ public class MarkdownShareService {
         return documents.findByIdAndOwnerId(documentId, ownerId)
                 .filter(document -> document.getDeletedAt() == null)
                 .orElseThrow(() -> new NotFoundException("Markdown 文章", documentId));
-    }
-
-    private String referencedImageId(String content, String requestedId) {
-        if (requestedId == null) return null;
-        var links = MARKDOWN_IMAGE_LINK.matcher(content);
-        while (links.find()) {
-            var managed = MANAGED_IMAGE_TARGET.matcher(links.group(1));
-            if (managed.matches() && managed.group(1).equalsIgnoreCase(requestedId)) return managed.group(1);
-        }
-        return null;
     }
 
     private NotFoundException invalidShare() {

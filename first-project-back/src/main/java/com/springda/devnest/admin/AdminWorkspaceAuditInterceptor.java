@@ -20,7 +20,7 @@ public class AdminWorkspaceAuditInterceptor implements HandlerInterceptor {
     private static final Set<String> WRITE_METHODS = Set.of("POST", "PUT", "PATCH", "DELETE");
     private static final Set<String> WORKSPACE_RESOURCES = Set.of(
             "tasks", "projects", "domains", "knowledge-items", "markdown-documents",
-            "markdown-images", "snippets", "logs", "profile");
+            "markdown-images", "snippets", "flowcharts", "profile");
 
     private final UserRepository users;
     private final AdminAuditService audit;

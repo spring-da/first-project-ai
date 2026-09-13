@@ -4,6 +4,7 @@ export const router = createRouter({
   history: createWebHistory(),
   scrollBehavior: () => ({ top: 0 }),
   routes: [
+    { path: '/share/bundle/:token', name: 'public-share-bundle', component: () => import('../views/PublicShareBundleView.vue') },
     { path: '/share/markdown/:token', name: 'public-markdown-share', component: () => import('../views/PublicMarkdownShareView.vue') },
     { path: '/share/knowledge/:token', name: 'public-knowledge-share', component: () => import('../views/PublicKnowledgeShareView.vue') },
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { guestOnly: true } },
@@ -16,6 +17,7 @@ export const router = createRouter({
       children: [
         { path: '', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { keepAlive: true } },
         { path: 'projects', name: 'projects', component: () => import('../views/ProjectsView.vue'), meta: { keepAlive: true } },
+        { path: 'shared-pool', name: 'shared-pool', component: () => import('../views/SharedPoolView.vue') },
         { path: 'knowledge', name: 'knowledge', component: () => import('../views/KnowledgeView.vue'), meta: { keepAlive: true } },
         { path: 'announcements', name: 'announcements', component: () => import('../views/AnnouncementsView.vue'), meta: { keepAlive: true } },
         { path: 'messages', name: 'messages', component: () => import('../views/MessageCenterView.vue'), meta: { keepAlive: true } },

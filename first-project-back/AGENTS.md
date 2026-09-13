@@ -31,7 +31,7 @@ mvn spring-boot:run
 - `config/`：JWT、Spring Security、CORS 和应用配置属性。
 - `auth/`、`user/`：邀请制注册、登录、改密、用户实体和 JWT 签发。
 - `admin/`：管理员人员目录、注册邀请、账号启禁用、密码重置和永久删除。
-- `task/`、`project/`、`knowledge/`、`snippet/`、`log/`、`profile/`：主要业务模块。
+- `task/`、`project/`、`knowledge/`、`snippet/`、`flowchart/`、`profile/`：主要业务模块。
 - `markdown/`：Markdown 文章、软删除/回收站、历史版本、并发版本检查、批量导入和 ZIP 导出。
 - `image/`：Markdown 图片元数据、文件签名检查、OSS 存取和按账号鉴权读取。
 - `common/`：基础实体、业务异常和统一 `ProblemDetail` 错误响应。

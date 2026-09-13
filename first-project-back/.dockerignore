@@ -7,6 +7,7 @@ target
 src/main/resources/application-local.yml
 src/main/resources/application-prod.yml
 backups
+certs
 **/target
 **/.codex-tmp
 **/.codex
@@ -17,3 +18,8 @@ backups
 **/*.py[cod]
 **/.pytest_cache
 **/.env.*
+# These modules were removed by Flyway V19. Keep stale additive uploads from
+# re-entering the Docker build context and bringing back DEV_LOG references.
+src/main/java/com/springda/devnest/log/
+src/main/java/com/springda/devnest/share/DevLogShareController.java
+src/test/java/com/springda/devnest/log/

@@ -76,7 +76,7 @@ function switchMode(next: 'login' | 'register') {
       <div class="auth-story__copy">
         <p class="eyebrow">YOUR PRIVATE DEVELOPER DESK</p>
         <h1>让每一次构建<br />都有迹可循。</h1>
-        <p>项目、任务、代码片段与开发日志，在浏览器和移动端保持一致。</p>
+        <p>项目、任务、代码片段与流程图，在浏览器和移动端保持一致。</p>
       </div>
       <div class="feature-list">
         <div><FolderKanban :size="18" /><span><strong>项目雷达</strong><small>掌握进度与下一步行动</small></span></div>

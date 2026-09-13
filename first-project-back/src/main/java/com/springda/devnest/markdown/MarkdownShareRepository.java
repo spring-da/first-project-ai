@@ -10,9 +10,10 @@ public interface MarkdownShareRepository extends JpaRepository<MarkdownShareEnti
     List<MarkdownShareEntity> findAllByDocumentIdAndOwnerIdOrderByCreatedAtDesc(String documentId, String ownerId);
     Optional<MarkdownShareEntity> findByIdAndDocumentIdAndOwnerId(String id, String documentId, String ownerId);
     Optional<MarkdownShareEntity> findByTokenDigest(String tokenDigest);
-    long countByDocumentIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfter(
+    long countByDocumentIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfterAndResourceGeneration(
             String documentId,
             String ownerId,
-            Instant now
+            Instant now,
+            long resourceGeneration
     );
 }

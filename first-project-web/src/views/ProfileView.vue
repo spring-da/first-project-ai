@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { BookOpen, Camera, CheckCircle2, Cloud, Code2, Edit3, FolderKanban, KeyRound, LoaderCircle, LogOut, Mail, Moon, RefreshCw, ShieldCheck, ShieldOff, Sun, Trash2 } from 'lucide-vue-next'
+import { Workflow, Camera, CheckCircle2, Cloud, Code2, Edit3, FolderKanban, KeyRound, LoaderCircle, LogOut, Mail, Moon, RefreshCw, ShieldCheck, ShieldOff, Sun, Trash2 } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import PageHeader from '../components/PageHeader.vue'
 import UserAvatar from '../components/UserAvatar.vue'
@@ -135,13 +135,13 @@ async function logoutAll() {
         <div class="stats-errors">
           <WorkspaceModuleState module="projects" title="项目统计" :has-data="Boolean(workspace.projects.length)" compact />
           <WorkspaceModuleState module="snippets" title="片段统计" :has-data="Boolean(workspace.snippets.length)" compact />
-          <WorkspaceModuleState module="logs" title="日志统计" :has-data="Boolean(workspace.logs.length)" compact />
+          <WorkspaceModuleState module="flowcharts" title="流程图统计" :has-data="Boolean(workspace.flowcharts.length)" compact />
           <WorkspaceModuleState module="tasks" title="任务统计" :has-data="Boolean(workspace.tasks.length)" compact />
         </div>
         <div class="stat-grid">
           <div><span class="stat-icon"><FolderKanban :size="18" /></span><strong>{{ !workspace.projects.length && (workspace.moduleStates.projects.loading || workspace.moduleStates.projects.error) ? '—' : workspace.projects.length }}</strong><small>项目</small></div>
           <div><span class="stat-icon"><Code2 :size="18" /></span><strong>{{ !workspace.snippets.length && (workspace.moduleStates.snippets.loading || workspace.moduleStates.snippets.error) ? '—' : workspace.snippets.length }}</strong><small>代码片段</small></div>
-          <div><span class="stat-icon"><BookOpen :size="18" /></span><strong>{{ !workspace.logs.length && (workspace.moduleStates.logs.loading || workspace.moduleStates.logs.error) ? '—' : workspace.logs.length }}</strong><small>开发日志</small></div>
+          <div><span class="stat-icon"><Workflow :size="18" /></span><strong>{{ !workspace.flowcharts.length && (workspace.moduleStates.flowcharts.loading || workspace.moduleStates.flowcharts.error) ? '—' : workspace.flowcharts.length }}</strong><small>流程图</small></div>
           <div><span class="stat-icon"><CheckCircle2 :size="18" /></span><strong>{{ !workspace.tasks.length && (workspace.moduleStates.tasks.loading || workspace.moduleStates.tasks.error) ? '—' : workspace.completedTasks }}</strong><small>已完成任务</small></div>
         </div>
       </article>

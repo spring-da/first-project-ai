@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Archive, ArrowUpRight, BookOpen, CalendarDays, Check, Clock3, Code2, FileText, FolderKanban, Inbox, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { Archive, ArrowUpRight, Workflow, CalendarDays, Check, Clock3, Code2, FileText, FolderKanban, Inbox, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 import WorkspaceModuleState from '../components/WorkspaceModuleState.vue'
@@ -34,7 +34,7 @@ const greeting = computed(() => {
   return '晚上好'
 })
 const dateLabel = computed(() => new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date()))
-const recentLogs = computed(() => [...workspace.logs].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt)).slice(0, 3))
+const recentFlowcharts = computed(() => [...workspace.flowcharts].sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.createdAt.localeCompare(a.createdAt)).slice(0, 3))
 const recentDocuments = computed(() => [...workspace.markdownDocuments].sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3))
 const visibleTasks = computed(() => sortTasks(workspace.tasks.filter((task) => matchesTaskView(task, taskView.value, today.value))))
 
@@ -203,12 +203,12 @@ function formatDueAt(value: string) {
       <div class="section-title"><div><p class="eyebrow">RECENT KNOWLEDGE</p><h2>最近沉淀</h2></div><button class="text-link" @click="router.push({ name: 'knowledge', query: workspaceQuery() })">打开知识库</button></div>
       <WorkspaceModuleState module="markdownDocuments" title="Markdown 文章" :has-data="Boolean(workspace.markdownDocuments.length)" compact />
       <WorkspaceModuleState module="snippets" title="代码片段" :has-data="Boolean(workspace.snippets.length)" compact />
-      <WorkspaceModuleState module="logs" title="开发日志" :has-data="Boolean(workspace.logs.length)" compact />
+      <WorkspaceModuleState module="flowcharts" title="流程图" :has-data="Boolean(workspace.flowcharts.length)" compact />
       <TransitionGroup name="list" tag="div" class="knowledge-grid">
         <button v-for="document in recentDocuments" :key="document.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents', focus: document.id }) })"><span class="knowledge-icon"><FileText :size="17" /></span><span><small>Markdown 文章</small><strong>{{ document.title }}</strong></span></button>
         <button v-for="snippet in workspace.snippets.slice(0, 1)" :key="snippet.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'snippets', focus: snippet.id }) })"><span class="knowledge-icon"><Code2 :size="17" /></span><span><small>{{ snippet.language }}</small><strong>{{ snippet.title }}</strong></span></button>
-        <button v-for="entry in recentLogs.slice(0, 1)" :key="entry.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'logs', focus: entry.id }) })"><span class="knowledge-icon"><BookOpen :size="17" /></span><span><small>开发日志</small><strong>{{ entry.title || entry.content.slice(0, 24) }}</strong></span></button>
-        <button v-if="!workspace.loading && !workspace.hasLoadErrors && !workspace.markdownDocuments.length && !workspace.snippets.length && !recentLogs.length" class="knowledge-item create" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents', create: '1' }) })"><span class="knowledge-icon"><Plus :size="17" /></span><span><small>知识库</small><strong>写下第一篇文章</strong></span></button>
+        <button v-for="entry in recentFlowcharts.slice(0, 1)" :key="entry.id" class="knowledge-item" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'flowcharts', focus: entry.id }) })"><span class="knowledge-icon"><Workflow :size="17" /></span><span><small>流程图</small><strong>{{ entry.title }}</strong></span></button>
+        <button v-if="!workspace.loading && !workspace.hasLoadErrors && !workspace.markdownDocuments.length && !workspace.snippets.length && !recentFlowcharts.length" class="knowledge-item create" @click="router.push({ name: 'knowledge', query: workspaceQuery({ tab: 'documents', create: '1' }) })"><span class="knowledge-icon"><Plus :size="17" /></span><span><small>知识库</small><strong>写下第一篇文章</strong></span></button>
       </TransitionGroup>
     </section>
 

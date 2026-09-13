@@ -30,6 +30,7 @@ import WorkspaceUtilities from '../components/WorkspaceUtilities.vue'
 import SearchScopeSelect from '../components/SearchScopeSelect.vue'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useFlowchartSearch } from '../composables/useFlowchartSearch'
 import { useSearchStore } from '../stores/search'
 import { useCommunicationStore } from '../stores/communication'
 import { useNotificationStore } from '../stores/notifications'
@@ -84,14 +85,15 @@ interface GlobalSearchResult {
 }
 
 const navItems = computed(() => [
-  { to: '/', label: '工作台', icon: Grid2X2 },
-  { to: '/projects', label: '项目', icon: FolderKanban },
-  { to: '/knowledge', label: '知识库', icon: BookOpen },
-  { to: '/announcements', label: '系统公告', icon: BellRing },
-  { to: '/messages', label: '意见交流', icon: MessagesSquare },
-  { to: '/tools', label: '系统工具', icon: Wrench, auxiliary: true },
-  ...(auth.isAdmin && !auth.workspaceMember ? [{ to: '/admin/accounts', label: '人员管理', icon: UsersRound }] : []),
-  { to: '/profile', label: '我的', icon: CircleUserRound },
+  { to: '/', label: '工作台', mobileLabel: '首页', icon: Grid2X2 },
+  { to: '/projects', label: '项目', mobileLabel: '项目', icon: FolderKanban },
+  { to: '/knowledge', label: '知识库', mobileLabel: '知识', icon: BookOpen },
+  { to: '/shared-pool', label: '知识广场', mobileLabel: '广场', icon: UsersRound },
+  { to: '/announcements', label: '系统公告', mobileLabel: '公告', icon: BellRing },
+  { to: '/messages', label: '意见交流', mobileLabel: '交流', icon: MessagesSquare },
+  { to: '/tools', label: '系统工具', mobileLabel: '工具', icon: Wrench, auxiliary: true },
+  ...(auth.isAdmin && !auth.workspaceMember ? [{ to: '/admin/accounts', label: '人员管理', mobileLabel: '成员', icon: UsersRound }] : []),
+  { to: '/profile', label: '我的', mobileLabel: '我的', icon: CircleUserRound },
 ])
 
 const activeAnnouncement = computed(() => communication.unreadAnnouncements[0] ?? null)
@@ -116,17 +118,19 @@ function workspaceLink(path: string) {
 const displayName = computed(() => workspace.profile?.name || auth.workspaceUser?.displayName || '开发者')
 const displayRole = computed(() => workspace.profile?.role || auth.workspaceUser?.email || 'DevNest User')
 const isKnowledgeRoute = computed(() => route.name === 'knowledge')
-const hasPageSearch = computed(() => isKnowledgeRoute.value || route.name === 'projects')
+const hasPageSearch = computed(() => isKnowledgeRoute.value || route.name === 'projects' || route.name === 'shared-pool')
 const currentNav = computed(() => navItems.value.find((item) => item.to === route.path) ?? navItems.value[0]!)
 const moduleErrorSummary = computed(() => Object.values(workspace.moduleStates)
   .filter((state) => state.error).map((state) => state.error).join('；'))
 const searchPlaceholder = computed(() => {
-  if (scope.value === 'global') return '搜索项目、文章标题、代码或日志…'
+  if (scope.value === 'global') return '搜索项目、文章标题、代码或流程图…'
+  if (route.name === 'shared-pool') return route.query.tab === 'links' ? '搜索外部链接标题…' : '搜索分享标题、正文或作者…'
   if (route.name === 'projects') return '搜索项目名称、描述或技术栈…'
   if (route.query.tab === 'snippets') return '搜索片段标题、语言或代码…'
-  if (route.query.tab === 'logs') return '搜索日志标题、正文或标签…'
+  if ((route.query.type ?? route.query.tab) === 'flowcharts') return '搜索流程图标题、图形或连线文字…'
   return '搜索文章标题或文件名…'
 })
+const flowchartSearch = useFlowchartSearch(computed(() => scope.value === 'global' ? query.value : ''))
 const showSearchResults = computed(() => scope.value === 'global' && globalSearchOpen.value && Boolean(query.value.trim()))
 const searchResults = computed<GlobalSearchResult[]>(() => {
   const value = query.value.trim().toLowerCase()
@@ -156,13 +160,13 @@ const searchResults = computed<GlobalSearchResult[]>(() => {
         description: `${workspace.domains.find((domain) => domain.id === item.domainId)?.name ?? '未分类'} · ${item.language}`,
         to: { name: 'knowledge', query: { tab: 'snippets', focus: item.id } },
       })),
-    ...workspace.logs.filter((item) => matchesSearch(value, item.title, item.content, item.tags.join(' ')))
+    ...flowchartSearch.results.value
       .map((item) => ({
-        key: `log-${item.id}`,
-        type: '开发日志',
-        title: item.title || item.content.slice(0, 30),
+        key: `flowchart-${item.id}`,
+        type: '流程图',
+        title: item.title,
         description: workspace.domains.find((domain) => domain.id === item.domainId)?.name ?? '未分类',
-        to: { name: 'knowledge', query: { tab: 'logs', focus: item.id } },
+        to: { name: 'knowledge', query: { tab: 'flowcharts', focus: item.id } },
       })),
   ].slice(0, 7)
 })
@@ -279,7 +283,7 @@ onBeforeUnmount(() => {
           :title="item.label"
           :aria-label="item.label"
         >
-          <component :is="item.icon" :size="19" aria-hidden="true" /><span>{{ item.label }}</span>
+          <component :is="item.icon" :size="19" aria-hidden="true" /><span class="nav-label">{{ item.label }}</span><span class="nav-label-mobile" aria-hidden="true">{{ item.mobileLabel }}</span>
         </RouterLink>
       </nav>
       <div class="sidebar-footer">
@@ -308,7 +312,7 @@ onBeforeUnmount(() => {
       <Transition name="topbar">
       <header v-if="!editorFocused" class="topbar">
         <div class="workspace-breadcrumb"><span>个人空间</span><ChevronRight :size="13" aria-hidden="true" /><strong>{{ currentNav.label }}</strong></div>
-        <div ref="searchBox" class="global-search" @focusout="onSearchFocusOut">
+        <div ref="searchBox" class="global-search" :class="{ 'global-search--scoped': hasPageSearch }" @focusout="onSearchFocusOut">
           <Search :size="18" aria-hidden="true" />
           <SearchScopeSelect v-if="hasPageSearch" v-model="scope" @change="openGlobalSearch" @open-change="(open) => { if (open) globalSearchOpen = false }" />
           <input ref="searchInput" v-model="query" type="search" :placeholder="searchPlaceholder" aria-label="搜索" :role="scope === 'global' ? 'combobox' : 'searchbox'" :aria-expanded="scope === 'global' ? showSearchResults : undefined" :aria-controls="showSearchResults ? 'global-search-results' : undefined" :aria-activedescendant="showSearchResults && activeResult >= 0 ? `search-result-${activeResult}` : undefined" autocomplete="off" @focus="globalSearchOpen = true" @keydown="onSearchKeydown" />
@@ -321,7 +325,9 @@ onBeforeUnmount(() => {
               <button v-for="(item, index) in searchResults" :id="`search-result-${index}`" :key="item.key" type="button" role="option" :aria-selected="activeResult === index" :class="{ 'is-active': activeResult === index }" @click="selectResult(item.to)">
                 <span>{{ item.type }}</span><span class="result-copy"><strong>{{ item.title }}</strong><small>{{ item.description }}</small></span><ChevronRight :size="15" />
               </button>
-              <p v-if="!searchResults.length" key="empty">没有找到“{{ query }}”相关内容</p>
+              <p v-if="flowchartSearch.loading.value" key="flowchart-loading" role="status">正在搜索流程图…</p>
+              <p v-else-if="flowchartSearch.error.value" key="flowchart-error" role="alert">流程图搜索失败：{{ flowchartSearch.error.value }}</p>
+              <p v-else-if="!searchResults.length" key="empty">没有找到“{{ query }}”相关内容</p>
             </TransitionGroup>
           </div>
           </Transition>
@@ -416,7 +422,11 @@ onBeforeUnmount(() => {
 .workspace-loading { height: calc(100vh - 70px); display: flex; align-items: center; justify-content: center; gap: 11px; color: var(--muted); font-size: var(--font-md); }
 .sync-status.error { color: var(--danger); }
 .sync-status.error svg { color: var(--danger); }
+@media (max-width: 400px) { .global-search--scoped > svg { display: none; } }
+.nav-item .nav-label-mobile { display: none; }
 @media (max-width: 720px) {
+  .nav-item .nav-label { display: none; }
+  .nav-item .nav-label-mobile { display: block; white-space: nowrap; font-size: 11px; }
   .workspace-breadcrumb { display: none; }
   .global-search { width: auto; flex: 1; gap: 6px; padding-inline: 9px; }
   .global-search kbd { display: none; }

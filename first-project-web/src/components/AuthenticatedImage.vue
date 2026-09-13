@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ImageIcon, ImageOff, LoaderCircle } from 'lucide-vue-next'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { apiDownload } from '../services/api'
-import { IMAGE_TYPES, MAX_IMAGE_BYTES } from '../utils/markdownEditing'
+import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import { loadImage } from '../services/markdownImages'
+import { useAuthStore } from '../stores/auth'
 
 const props = defineProps<{ url: string; alt: string }>()
+const auth = useAuthStore()
 const root = ref<HTMLElement | null>(null)
 const objectUrl = ref('')
 const loading = ref(false)
@@ -12,6 +13,8 @@ const failed = ref(false)
 const queued = ref(true)
 let controller: AbortController | null = null
 let observer: IntersectionObserver | null = null
+let active = true
+let revision = 0
 
 function cleanup() {
   controller?.abort()
@@ -20,7 +23,7 @@ function cleanup() {
   objectUrl.value = ''
 }
 
-async function load() {
+async function load(reload = false) {
   observer?.disconnect()
   queued.value = false
   cleanup()
@@ -29,12 +32,8 @@ async function load() {
   const request = new AbortController()
   controller = request
   try {
-    const { blob } = await apiDownload(props.url, {
-      signal: request.signal,
-      headers: { Accept: 'image/*, application/problem+json' },
-    })
+    const blob = await loadImage(props.url, request.signal, true, { reload })
     if (request.signal.aborted || controller !== request) return
-    if (!IMAGE_TYPES.includes(blob.type) || blob.size > MAX_IMAGE_BYTES) throw new Error('图片响应无效')
     objectUrl.value = URL.createObjectURL(blob)
   } catch (error) {
     if (!request.signal.aborted && controller === request
@@ -48,33 +47,37 @@ async function load() {
 }
 
 async function deferLoad() {
+  const current = ++revision
   observer?.disconnect()
   cleanup()
   failed.value = false
   loading.value = false
   queued.value = true
   await nextTick()
-  if (!root.value) return
+  if (!active || current !== revision || !root.value) return
   if (typeof IntersectionObserver === 'undefined') {
     await load()
     return
   }
   observer = new IntersectionObserver((entries) => {
-    if (entries.some((entry) => entry.isIntersecting)) void load()
+    if (active && current === revision && entries.some((entry) => entry.isIntersecting)) void load()
   }, { rootMargin: '320px 0px' })
   observer.observe(root.value)
 }
 
-watch(() => props.url, deferLoad)
+watch(() => [props.url, auth.workspaceKey, auth.session?.accessToken], deferLoad)
 onMounted(deferLoad)
-onBeforeUnmount(() => { observer?.disconnect(); cleanup() })
+onActivated(() => { if (!active) { active = true; void deferLoad() } })
+function deactivate() { active = false; revision++; observer?.disconnect(); cleanup() }
+onDeactivated(deactivate)
+onBeforeUnmount(deactivate)
 </script>
 
 <template>
   <div ref="root" class="authenticated-image" :class="{ loading, failed, queued }">
     <LoaderCircle v-if="loading" class="spin" :size="20" />
-    <button v-else-if="failed" type="button" @click="load"><ImageOff :size="19" />图片暂时无法加载，点击重试</button>
-    <img v-else-if="objectUrl" :src="objectUrl" :alt="alt" loading="lazy" />
+    <button v-else-if="failed" type="button" @click="load(true)"><ImageOff :size="19" />图片暂时无法加载，点击重试</button>
+    <img v-else-if="objectUrl" :src="objectUrl" :alt="alt" decoding="async" @error="failed = true" />
     <span v-else><ImageIcon :size="19" />滚动到这里时加载图片</span>
   </div>
 </template>

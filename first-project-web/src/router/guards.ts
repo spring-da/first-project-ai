@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/auth'
 import { useAdminStore } from '../stores/admin'
 import { useNotificationStore } from '../stores/notifications'
 
-const workspacePages = new Set(['dashboard', 'projects', 'knowledge', 'tools', 'profile'])
+const workspacePages = new Set(['dashboard', 'projects', 'knowledge', 'shared-pool', 'tools', 'profile'])
 
 export function installAuthGuards(router: Router, pinia: Pinia) {
   const auth = useAuthStore(pinia)

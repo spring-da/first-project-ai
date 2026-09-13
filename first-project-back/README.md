@@ -21,16 +21,16 @@ Spring Boot 4.1.0 官方支持 Java 17–26，项目使用当前最新 Java 26�
 - 管理员人员管理、模拟登录成员完整工作区、管理员操作审计、短期随机临时密码、JWT 会话撤销和登录失败锁定
 - 管理员 Markdown 系统公告发布与撤回、成员单次已读提示
 - 独立的系统公告与意见交流入口、回复折叠分页、链接识别、图片附件和管理员内容管理
-- Markdown 文章、代码片段和开发日志的限时公开只读分享与随时撤销
+- Markdown 文章、代码片段和流程图的限时公开只读分享与随时撤销
 - JWT 无状态认证
 - 按登录用户隔离所有业务数据
 - 带日期、截止时间、优先级、完成时间和归档状态的任务计划 CRUD
 - 项目与技术栈 CRUD
-- 知识领域目录 CRUD，以及片段/日志归类
+- 知识领域目录 CRUD，以及片段/流程图归类
 - Markdown 文章 CRUD、批量导入和 ZIP 批量导出
 - Markdown 图片上传、私有 OSS 存储及按账号鉴权读取（[配置说明](docs/MARKDOWN_IMAGES.md)）
 - 代码片段 CRUD
-- 结构化开发日志与标签 CRUD
+- 标准流程图、版本保存、历史恢复、搜索与回收站
 - 开发者资料查询与修改、性别设置、默认头像与私有 OSS 头像上传
 - 参数校验和统一 `ProblemDetail` 错误响应
 - PostgreSQL 表结构、索引和 Flyway 迁移
@@ -55,7 +55,7 @@ src/main/java/com/springda/devnest/
 ├── announcement/  # 系统公告与成员已读状态
 ├── community/     # 意见消息、回复与图片附件
 ├── snippet/       # 代码片段
-└── log/           # 开发日志
+└── flowchart/           # 流程图
 
 src/main/resources/
 ├── application.yml
@@ -209,3 +209,7 @@ Flutter Web 本地开发地址需要加入 `CORS_ALLOWED_ORIGINS`。
 - Refresh Token
 - 分页、搜索和增量同步接口
 - OpenAPI/Swagger 文档
+
+流程图 API 与可移植模型见 [docs/FLOWCHART_API.md](docs/FLOWCHART_API.md)。V19 升级前须完成可恢复备份，旧开发日志及其分享项将被清除。
+
+如果通过压缩包、SFTP 或面板增量覆盖服务器目录，请同时上传最新的 `Dockerfile` 和 `.dockerignore`，并从部署目录删除旧的 `src/main/java/com/springda/devnest/log/`、`DevLogShareController.java` 及对应测试目录。`.dockerignore` 已额外排除这些已退役路径，防止残留源码再次进入 Docker 构建上下文；更新后执行 `docker compose -f compose.yml build --no-cache backend`，再执行 `docker compose -f compose.yml up -d backend`。

@@ -32,6 +32,12 @@ public class KnowledgeShareEntity extends BaseEntity {
     @Column(name = "revoked_at")
     private Instant revokedAt;
 
+    @Column(name = "resource_generation", nullable = false)
+    private long resourceGeneration;
+
+    public long getResourceGeneration() { return resourceGeneration; }
+    public void captureGeneration(long generation) { resourceGeneration = generation; }
+
     protected KnowledgeShareEntity() {
     }
 

@@ -1,0 +1,4 @@
+# Keep only the instructions; certificates, private keys and downloaded ZIPs stay local.
+*
+!.gitignore
+!README.md

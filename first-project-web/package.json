@@ -11,8 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@antv/x6": "3.1.8",
     "lucide-vue-next": "^0.577.0",
     "pinia": "^3.0.4",
+    "tslib": "2.8.1",
     "vue": "^3.5.40",
     "vue-router": "^4.6.4"
   },
@@ -20,6 +22,7 @@
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
+    "fake-indexeddb": "^6.2.5",
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vue-tsc": "^3.3.8"

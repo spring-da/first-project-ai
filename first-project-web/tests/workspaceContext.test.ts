@@ -29,6 +29,8 @@ test('member context applies only to workspace data; authentication and system c
   await apiRequest('/tasks', { method: 'POST', body: '{}' })
   await apiRequest('/profile/avatar', { method: 'POST', body: new FormData() })
   await apiRequest('/markdown-documents/id/shares')
+  await apiRequest('/flowcharts?q=approval')
+  await apiRequest('/flowcharts/id', { method: 'PUT', body: '{}' })
   await apiDownload('/markdown-documents/export', { method: 'POST', body: '{}' })
   await apiDownload('/markdown-images/image')
   await apiRequest('/auth/me')
@@ -40,7 +42,7 @@ test('member context applies only to workspace data; authentication and system c
   await apiDownload('/public/markdown-shares/token/images/image', { authenticated: false })
   await apiRequest('/public/knowledge-shares/token', { authenticated: false })
   assert.deepEqual(calls.map(([, owner]) => owner), [
-    'member', 'member', 'member', 'member', 'member', null, null, null, null, null, null, null, null,
+    'member', 'member', 'member', 'member', 'member', 'member', 'member', null, null, null, null, null, null, null, null,
   ])
   setRequestWorkspace(null)
   await apiRequest('/tasks')
@@ -55,7 +57,7 @@ test('switching workspace aborts writes and rejects late responses even if trans
     signal = options.signal
     return new Promise<Response>((resolve) => { finish = resolve })
   })
-  const pending = apiRequest('/tasks', { method: 'POST', body: '{}' })
+  const pending = apiRequest('/flowcharts/id', { method: 'PUT', body: '{}' })
   setRequestWorkspace('member-b')
   assert.equal(signal.aborted, true)
   finish(Response.json({ id: 'old-task' }))

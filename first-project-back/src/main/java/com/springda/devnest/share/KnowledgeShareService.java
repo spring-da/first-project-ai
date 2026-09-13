@@ -3,11 +3,10 @@ package com.springda.devnest.share;
 import com.springda.devnest.common.BadRequestException;
 import com.springda.devnest.common.ConflictException;
 import com.springda.devnest.common.NotFoundException;
-import com.springda.devnest.log.DevLogEntity;
-import com.springda.devnest.log.DevLogRepository;
 import com.springda.devnest.markdown.MarkdownShareTokenService;
 import com.springda.devnest.snippet.SnippetEntity;
 import com.springda.devnest.snippet.SnippetRepository;
+import com.springda.devnest.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,19 +23,19 @@ public class KnowledgeShareService {
 
     private final KnowledgeShareRepository shares;
     private final SnippetRepository snippets;
-    private final DevLogRepository logs;
     private final MarkdownShareTokenService tokens;
+    private final UserRepository users;
 
     public KnowledgeShareService(
             KnowledgeShareRepository shares,
             SnippetRepository snippets,
-            DevLogRepository logs,
-            MarkdownShareTokenService tokens
+            MarkdownShareTokenService tokens,
+            UserRepository users
     ) {
         this.shares = shares;
         this.snippets = snippets;
-        this.logs = logs;
         this.tokens = tokens;
+        this.users = users;
     }
 
     @Transactional
@@ -46,7 +45,9 @@ public class KnowledgeShareService {
             String resourceId,
             KnowledgeShareDtos.CreateRequest request
     ) {
-        requireActiveResource(ownerId, type, resourceId);
+        if (users.findById(ownerId).filter(user -> user.isEnabled()).isEmpty()) throw invalidShare();
+        var resource = requireActiveResource(ownerId, type, resourceId);
+        long generation = resource.getSharingGeneration();
         var now = Instant.now();
         var expiresAt = request.expiresAt();
         if (expiresAt == null || !expiresAt.isAfter(now)) {
@@ -55,25 +56,30 @@ public class KnowledgeShareService {
         if (expiresAt.isAfter(now.plus(MAX_LIFETIME))) {
             throw new BadRequestException("分享链接的有效期不能超过 365 天。");
         }
-        if (shares.countByResourceTypeAndResourceIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfter(
-                type, resourceId, ownerId, now) >= MAX_ACTIVE_LINKS) {
+        if (shares.countByResourceTypeAndResourceIdAndOwnerIdAndRevokedAtIsNullAndExpiresAtAfterAndResourceGeneration(
+                type, resourceId, ownerId, now, generation) >= MAX_ACTIVE_LINKS) {
             throw new ConflictException("这项内容已有过多有效分享链接，请先撤销不再使用的链接。");
         }
 
         var token = tokens.createToken();
-        var share = shares.saveAndFlush(new KnowledgeShareEntity(
-                type, resourceId, ownerId, tokens.digest(token), expiresAt));
+        var share = new KnowledgeShareEntity(type, resourceId, ownerId, tokens.digest(token), expiresAt);
+        share.captureGeneration(generation);
+        shares.saveAndFlush(share);
         return KnowledgeShareDtos.SecretResponse.from(share, token);
     }
 
     @Transactional(readOnly = true)
     public List<KnowledgeShareDtos.SummaryResponse> list(
             String ownerId, KnowledgeResourceType type, String resourceId) {
-        requireActiveResource(ownerId, type, resourceId);
+        var resource = requireActiveResource(ownerId, type, resourceId);
+        long generation = resource.getSharingGeneration();
+        boolean enabled = users.findById(ownerId).filter(user -> user.isEnabled()).isPresent();
         var now = Instant.now();
         return shares.findAllByResourceTypeAndResourceIdAndOwnerIdOrderByCreatedAtDesc(
                         type, resourceId, ownerId).stream()
-                .map(share -> KnowledgeShareDtos.SummaryResponse.from(share, now))
+                .map(share -> new KnowledgeShareDtos.SummaryResponse(share.getId(), share.getExpiresAt(),
+                        share.getCreatedAt(), share.getRevokedAt(), enabled && share.isActive(now)
+                        && share.getResourceGeneration() == generation))
                 .toList();
     }
 
@@ -92,34 +98,25 @@ public class KnowledgeShareService {
         if (token == null || !TOKEN.matcher(token).matches()) throw invalidShare();
         var share = shares.findByTokenDigest(tokens.digest(token)).orElseThrow(this::invalidShare);
         if (!share.isActive(Instant.now())) throw invalidShare();
+        if (users.findById(share.getOwnerId()).filter(user -> user.isEnabled()).isEmpty()) throw invalidShare();
         return switch (share.getResourceType()) {
             case SNIPPET -> KnowledgeShareDtos.PublicResponse.from(
-                    requireSharedSnippet(share.getOwnerId(), share.getResourceId()), share);
-            case DEV_LOG -> KnowledgeShareDtos.PublicResponse.from(
-                    requireSharedLog(share.getOwnerId(), share.getResourceId()), share);
+                    requireSharedSnippet(share.getOwnerId(), share.getResourceId(), share.getResourceGeneration()), share);
         };
     }
 
-    private Object requireActiveResource(String ownerId, KnowledgeResourceType type, String resourceId) {
+    private SnippetEntity requireActiveResource(String ownerId, KnowledgeResourceType type, String resourceId) {
         return switch (type) {
             case SNIPPET -> snippets.findByIdAndOwnerId(resourceId, ownerId)
                     .filter(item -> item.getDeletedAt() == null)
                     .orElseThrow(() -> new NotFoundException("代码片段", resourceId));
-            case DEV_LOG -> logs.findByIdAndOwnerId(resourceId, ownerId)
-                    .filter(item -> item.getDeletedAt() == null)
-                    .orElseThrow(() -> new NotFoundException("开发日志", resourceId));
         };
     }
 
-    private SnippetEntity requireSharedSnippet(String ownerId, String resourceId) {
+    private SnippetEntity requireSharedSnippet(String ownerId, String resourceId, long generation) {
         return snippets.findByIdAndOwnerId(resourceId, ownerId)
                 .filter(item -> item.getDeletedAt() == null)
-                .orElseThrow(this::invalidShare);
-    }
-
-    private DevLogEntity requireSharedLog(String ownerId, String resourceId) {
-        return logs.findByIdAndOwnerId(resourceId, ownerId)
-                .filter(item -> item.getDeletedAt() == null)
+                .filter(item -> item.getSharingGeneration() == generation)
                 .orElseThrow(this::invalidShare);
     }
 

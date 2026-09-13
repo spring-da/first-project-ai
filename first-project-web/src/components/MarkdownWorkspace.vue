@@ -2,16 +2,13 @@
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import {
-  AlertCircle,
   ArrowLeft,
   Bold,
   BookOpen,
   Check,
   CheckSquare,
-  Clock3,
   Code,
   Columns2,
-  Copy,
   Download,
   Edit3,
   Eye,
@@ -42,7 +39,7 @@ import { useAuthStore } from '../stores/auth'
 import { useNotificationStore } from '../stores/notifications'
 import { useConfirmationStore } from '../stores/confirmation'
 import { matchesDocumentSearch } from '../utils/search'
-import type { MarkdownDocument, MarkdownDocumentDraft, MarkdownShareLink, MarkdownShareSecret } from '../types'
+import type { MarkdownDocument, MarkdownDocumentDraft } from '../types'
 import { buildMarkdownHeadingTree, extractMarkdownHeadings, markdownExcerpt } from '../utils/markdown'
 import EmptyState from './EmptyState.vue'
 import AppModal from './AppModal.vue'
@@ -53,7 +50,8 @@ import type { LocalMarkdownDraft } from '../utils/markdownDrafts'
 import { createClientId } from '../utils/clientId'
 import { completeImageUpload, handleSaveShortcut, imageMarkdown, isDefaultFileName, MAX_IMAGE_BATCH, needsDocumentName, validateImageFile } from '../utils/markdownEditing'
 import { primeMarkdownImageCache, uploadMarkdownImage } from '../services/markdownImages'
-import { createMarkdownShare, listMarkdownShares, revokeMarkdownShare } from '../services/markdownShares'
+import ShareDialog from './ShareDialog.vue'
+import type { ShareSelection } from '../types/sharing'
 import MarkdownContent from './MarkdownContent.vue'
 import MarkdownGuide from './MarkdownGuide.vue'
 import MarkdownOutlineTree from './MarkdownOutlineTree.vue'
@@ -110,12 +108,7 @@ const localSavedAt = ref('')
 const draftError = ref('')
 const showDrafts = ref(false)
 const showShares = ref(false)
-const shareLinks = ref<MarkdownShareLink[]>([])
-const shareSecret = ref<MarkdownShareSecret | null>(null)
-const shareDays = ref(7)
-const shareLoading = ref(false)
-const shareBusy = ref(false)
-const shareError = ref('')
+const shareItems = ref<ShareSelection[]>([])
 const recoveryMode = ref<'trash' | 'history' | null>(null)
 const recoveryBusy = ref(false)
 const pendingDelete = ref<MarkdownDocument | null>(null)
@@ -132,9 +125,6 @@ const draft = reactive<MarkdownDocumentDraft>({
   favorite: false,
 })
 const importProgress = reactive({ active: false, current: 0, total: 0, message: '' })
-const shareUrl = computed(() => shareSecret.value
-  ? `${window.location.origin}/share/markdown/${encodeURIComponent(shareSecret.value.token)}`
-  : '')
 
 const filteredDocuments = computed(() => {
   const keyword = search.value.trim().toLowerCase()
@@ -279,108 +269,17 @@ async function openHistory() {
   recoveryMode.value = 'history'
 }
 
-async function openShare() {
-  if (!editingId.value) return
-  const documentId = editingId.value
+function openShare() {
+  const document = workspace.markdownDocuments.find(item => item.id === editingId.value)
+  if (!document) return
+  shareItems.value = [{ type: 'MARKDOWN', id: document.id, title: document.title }]
   showShares.value = true
-  shareSecret.value = null
-  shareLinks.value = []
-  shareError.value = ''
-  shareLoading.value = true
-  try {
-    const links = await listMarkdownShares(documentId)
-    if (showShares.value && editingId.value === documentId) shareLinks.value = links
-  } catch (cause) {
-    if (showShares.value && editingId.value === documentId) {
-      shareError.value = cause instanceof Error ? cause.message : '暂时无法读取分享链接。'
-    }
-  } finally {
-    if (editingId.value === documentId) shareLoading.value = false
-  }
 }
 
-function closeShare() {
-  if (shareBusy.value) return
-  showShares.value = false
-  shareSecret.value = null
-  shareError.value = ''
-}
-
-async function createShare() {
-  if (!editingId.value || shareBusy.value) return
-  const days = Number(shareDays.value)
-  if (!Number.isInteger(days) || days < 1 || days > 365) {
-    shareError.value = '有效期请输入 1–365 天的整数。'
-    return
-  }
-  const documentId = editingId.value
-  shareBusy.value = true
-  shareError.value = ''
-  try {
-    const secret = await createMarkdownShare(
-      documentId,
-      new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
-    )
-    if (!showShares.value || editingId.value !== documentId) return
-    shareSecret.value = secret
-    shareLinks.value = [{ ...secret, revokedAt: null, active: true }, ...shareLinks.value]
-    notifications.notify('分享链接已生成，请复制后发送给需要查看的人。', { type: 'success' })
-  } catch (cause) {
-    shareError.value = cause instanceof Error ? cause.message : '分享链接生成失败，请稍后重试。'
-  } finally {
-    shareBusy.value = false
-  }
-}
-
-async function copyShareUrl() {
-  if (!shareUrl.value) return
-  try {
-    if (window.isSecureContext && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(shareUrl.value)
-    } else {
-      const field = window.document.createElement('textarea')
-      field.value = shareUrl.value
-      field.style.position = 'fixed'
-      field.style.opacity = '0'
-      window.document.body.append(field)
-      field.select()
-      window.document.execCommand('copy')
-      field.remove()
-    }
-    notifications.notify('分享链接已复制。', { type: 'success' })
-  } catch {
-    notifications.notify('自动复制失败，请手动选择并复制链接。', { type: 'warning' })
-  }
-}
-
-function selectShareUrl(event: FocusEvent) {
-  if (event.target instanceof HTMLTextAreaElement) event.target.select()
-}
-
-async function revokeShare(link: MarkdownShareLink) {
-  if (!editingId.value || !link.active || shareBusy.value) return
-  if (!await confirmation.ask({
-    title: '撤销这个分享链接？',
-    message: '收到此链接的人将立即无法继续查看文章。',
-    detail: '撤销后无法恢复；如需再次分享，可以生成一个新链接。',
-    confirmText: '撤销链接', cancelText: '保留链接', tone: 'warning', icon: 'leave',
-  })) return
-  const documentId = editingId.value
-  shareBusy.value = true
-  shareError.value = ''
-  try {
-    await revokeMarkdownShare(documentId, link.id)
-    const revokedAt = new Date().toISOString()
-    shareLinks.value = shareLinks.value.map((item) => item.id === link.id
-      ? { ...item, active: false, revokedAt }
-      : item)
-    if (shareSecret.value?.id === link.id) shareSecret.value = null
-    notifications.notify('分享链接已撤销。', { type: 'success' })
-  } catch (cause) {
-    shareError.value = cause instanceof Error ? cause.message : '撤销失败，请稍后重试。'
-  } finally {
-    shareBusy.value = false
-  }
+function shareSelected() {
+  shareItems.value = workspace.markdownDocuments.filter(item => selectedIds.value.has(item.id))
+    .map(item => ({ type: 'MARKDOWN', id: item.id, title: item.title }))
+  showShares.value = shareItems.value.length > 0
 }
 
 function onVersionRestored(document: MarkdownDocument) {
@@ -903,12 +802,6 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(value))
 }
 
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  }).format(new Date(value))
-}
-
 function domainName(id: string | null) {
   if (!id) return '未分类'
   return workspace.domains.find((item) => item.id === id)?.name ?? '已删除目录'
@@ -972,19 +865,19 @@ watch(() => auth.workspaceKey, (id) => {
   editorOpen.value = false
   showDrafts.value = false
   showShares.value = false
-  shareSecret.value = null
+  shareItems.value = []
   pendingDelete.value = null
   pendingDiscard.value = null
   recoveryMode.value = null
   localDrafts.value = []
 }, { flush: 'sync' })
 onActivated(() => { componentActive = true; refreshLocalDrafts() })
-onDeactivated(() => { componentActive = false; cancelImageUploads(); flushLocalDraft(); showDrafts.value = false; showShares.value = false; shareSecret.value = null; recoveryMode.value = null; pendingDelete.value = null; pendingDiscard.value = null })
+onDeactivated(() => { componentActive = false; cancelImageUploads(); flushLocalDraft(); showDrafts.value = false; showShares.value = false; shareItems.value = []; recoveryMode.value = null; pendingDelete.value = null; pendingDiscard.value = null })
 onBeforeUnmount(() => {
   componentActive = false
   cancelImageUploads()
   flushLocalDraft()
-  shareSecret.value = null
+  shareItems.value = []
   editorSession++
   clearTimeout(draftTimer)
   window.removeEventListener('beforeunload', onBeforeUnload)
@@ -1035,6 +928,7 @@ defineExpose({
 
       <Transition name="reveal"><div v-if="selectedIds.size" class="bulk-domain-bar">
         <strong>已选择 {{ selectedIds.size }} 篇</strong>
+        <button class="button button-secondary" type="button" :disabled="workspace.mutating" @click="shareSelected"><Share2 :size="16" />批量分享</button>
         <span>批量调整目录</span>
         <select v-model="bulkDomainId" aria-label="选择目标目录">
           <option value="" disabled>选择目标目录</option>
@@ -1156,40 +1050,7 @@ defineExpose({
     </section>
     </Transition>
 
-    <AppModal v-if="showShares" title="分享这篇文章" description="生成一个无需登录即可打开的只读链接，并为它设置自动失效时间。" wide @close="closeShare">
-      <div class="share-dialog">
-        <p v-if="isDirty" class="share-notice"><Clock3 :size="16" />当前还有未保存修改；访客看到的是最近一次成功保存到云端的内容。</p>
-
-        <form class="share-create" @submit.prevent="createShare">
-          <div><strong>创建新链接</strong><span>链接令牌只显示一次，数据库不会保存明文。</span></div>
-          <label><span>有效期</span><input v-model.number="shareDays" type="number" min="1" max="365" step="1" required aria-label="分享链接有效天数" /><b>天</b></label>
-          <button class="button button-primary" type="submit" :disabled="shareBusy"><LoaderCircle v-if="shareBusy" class="spin" :size="16" /><Share2 v-else :size="16" />{{ shareBusy ? '生成中' : '生成链接' }}</button>
-        </form>
-
-        <p v-if="shareError" class="share-error" role="alert"><AlertCircle :size="16" />{{ shareError }}</p>
-
-        <section v-if="shareSecret" class="share-secret" aria-live="polite">
-          <div><strong>分享链接已生成</strong><span>有效至 {{ formatDateTime(shareSecret.expiresAt) }}</span></div>
-          <label><span class="sr-only">新生成的分享链接</span><textarea :value="shareUrl" readonly rows="2" @focus="selectShareUrl" /></label>
-          <p><Clock3 :size="15" />请现在复制保存；关闭窗口后无法再次查看这条链接。</p>
-          <div class="share-secret__actions"><button class="button button-primary" type="button" @click="copyShareUrl"><Copy :size="16" />复制链接</button><a class="button button-secondary" :href="shareUrl" target="_blank" rel="noopener noreferrer">打开预览</a></div>
-        </section>
-
-        <section class="share-history">
-          <div class="share-history__head"><div><strong>已创建的链接</strong><span>可查看有效期和撤销状态，但不会重新展示令牌。</span></div><b>{{ shareLinks.filter((item) => item.active).length }} 个有效</b></div>
-          <p v-if="shareLoading" class="share-loading" role="status"><LoaderCircle class="spin" :size="17" />正在读取分享记录…</p>
-          <div v-else-if="shareLinks.length" class="share-link-list">
-            <article v-for="link in shareLinks" :key="link.id" class="share-link-row">
-              <span class="share-link-icon"><Share2 :size="16" /></span>
-              <div><strong>{{ link.active ? '有效分享链接' : link.revokedAt ? '已撤销' : '已过期' }}</strong><small>创建于 {{ formatDateTime(link.createdAt) }} · 有效至 {{ formatDateTime(link.expiresAt) }}</small></div>
-              <span class="share-status" :class="{ active: link.active }">{{ link.active ? '有效' : link.revokedAt ? '已撤销' : '已过期' }}</span>
-              <button v-if="link.active" class="button button-ghost" type="button" :disabled="shareBusy" @click="revokeShare(link)">撤销</button>
-            </article>
-          </div>
-          <p v-else class="share-empty">还没有创建过分享链接。</p>
-        </section>
-      </div>
-    </AppModal>
+    <ShareDialog v-if="showShares" :items="shareItems" :unsaved="editorOpen && isDirty" @close="showShares = false; shareItems = []" />
 
     <AppModal v-if="showDrafts" title="本机草稿" description="草稿仅保存在此浏览器。恢复后请保存到云端；清除浏览器数据会移除本机草稿。" @close="!recoveryBusy && (showDrafts = false)">
       <div v-if="pendingDiscard" class="draft-banner" role="alertdialog" aria-label="确认丢弃草稿"><p>丢弃“{{ pendingDiscard.draft.title || '未命名文章' }}”的本机草稿？此操作不会删除云端文章。</p><button type="button" class="button button-secondary" @click="pendingDiscard = null">取消</button><button type="button" class="button button-primary" @click="discardDraft(pendingDiscard)">确认丢弃</button></div>
@@ -1227,52 +1088,11 @@ defineExpose({
 .local-draft-row { padding: 16px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .local-draft-row small { display: block; margin: 7px 0 12px; color: var(--muted); font-size: var(--font-xs); }
 .local-draft-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.share-dialog { display: grid; gap: 18px; }
-.share-notice, .share-error { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 11px 13px; border: 1px solid var(--accent-border); border-radius: 9px; color: var(--accent); background: var(--accent-bg); font-size: 12px; line-height: 1.55; }
-.share-notice svg, .share-error svg { flex: 0 0 auto; margin-top: 1px; }
-.share-error { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 28%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, var(--panel)); }
-.share-create { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 14px; padding: 17px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-sunken); }
-.share-create > div strong, .share-create > div span, .share-secret > div strong, .share-secret > div span, .share-history__head strong, .share-history__head span { display: block; }
-.share-create > div strong, .share-secret > div strong, .share-history__head strong { color: var(--text); font-size: 13px; }
-.share-create > div span, .share-secret > div span, .share-history__head span { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.5; }
-.share-create label { display: grid; grid-template-columns:auto 74px auto; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
-.share-create input { width: 74px; height: 38px; padding: 0 9px; color: var(--text); border: 1px solid var(--border); border-radius: 8px; outline: 0; background: var(--panel); }
-.share-create input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.share-create b { font-weight: 500; }
-.share-secret { display: grid; grid-template-columns:minmax(0,1fr) auto; gap: 13px 16px; padding: 17px; border: 1px solid var(--accent-border); border-radius: 12px; background: var(--accent-bg); }
-.share-secret label { grid-column: 1 / -1; }
-.share-secret textarea { width: 100%; resize: none; padding: 10px 11px; color: var(--text); border: 1px solid var(--accent-border); border-radius: 8px; outline: 0; background: var(--panel); font: 12px/1.55 "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere; }
-.share-secret textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.share-secret > p { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: 11px; }
-.share-secret__actions { display: flex; justify-content: flex-end; gap: 8px; }
-.share-history { display: grid; gap: 11px; }
-.share-history__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.share-history__head b { padding: 4px 8px; color: var(--accent); border-radius: 999px; background: var(--accent-bg); font-size: 11px; white-space: nowrap; }
-.share-loading, .share-empty { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 76px; margin: 0; color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; font-size: 12px; }
-.share-link-list { overflow: hidden; border: 1px solid var(--border); border-radius: 11px; }
-.share-link-row { min-height: 68px; display: grid; grid-template-columns: 34px minmax(0,1fr) auto 66px; align-items: center; gap: 11px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.share-link-row:last-child { border-bottom: 0; }
-.share-link-icon { width: 32px; height: 32px; display: grid; place-items: center; color: var(--accent); border-radius: 8px; background: var(--accent-bg); }
-.share-link-row > div { min-width: 0; }
-.share-link-row > div strong, .share-link-row > div small { display: block; }
-.share-link-row > div strong { font-size: 12px; }
-.share-link-row > div small { overflow: hidden; margin-top: 4px; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.share-status { padding: 4px 7px; color: var(--muted); border-radius: 999px; background: var(--surface-sunken); font-size: 10px; white-space: nowrap; }
-.share-status.active { color: var(--accent); background: var(--accent-bg); }
-.share-link-row > button { min-height: 32px; padding-inline: 10px; }
 @media (max-width: 720px) {
   .history-button span, .share-button span, .markdown-reader__bar .toolbar-button span { display: none; }
   .markdown-reader__bar { gap: 6px; padding-inline: 8px; }
   .markdown-reader__bar .editor-actions { gap: 2px; }
   .markdown-reader__bar .toolbar-button { width: 32px; padding: 0; }
-  .share-create { grid-template-columns: 1fr; align-items: stretch; }
-  .share-create label { width: fit-content; }
-  .share-create .button { width: 100%; }
-  .share-secret { grid-template-columns: 1fr; }
-  .share-secret__actions { justify-content: stretch; flex-direction: column; }
-  .share-secret__actions .button { width: 100%; }
-  .share-link-row { grid-template-columns: 32px minmax(0,1fr) auto; }
-  .share-link-row > button { grid-column: 2 / -1; width: fit-content; }
 }
 .markdown-workspace { min-width: 0; }
 .markdown-list-view { min-width: 0; }

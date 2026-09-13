@@ -11,6 +11,7 @@ import { useNotificationStore } from '../stores/notifications'
 const props = defineProps<{ modelValue: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const notifications = useNotificationStore()
+const codeEditor = ref<InstanceType<typeof CodeEditor> | null>(null)
 const mode = ref<'code' | 'tree' | 'split'>('split')
 const history = ref<string[]>([])
 const future = ref<string[]>([])
@@ -121,11 +122,12 @@ onBeforeUnmount(() => {
 })
 
 function update(value: string) {
-  if (value === props.modelValue) return
-  if (value.length > 200000) { notifications.notify('代码内容不能超过 200000 个字符。', { type: 'warning' }); return }
+  if (value === props.modelValue) return true
+  if (value.length > 200000) { notifications.notify('代码内容不能超过 200000 个字符。', { type: 'warning' }); return false }
   history.value = appendBoundedHistory(history.value, props.modelValue)
   future.value = []
   emit('update:modelValue', value)
+  return true
 }
 function undo() {
   const value = history.value.pop()
@@ -142,6 +144,7 @@ function redo() {
   emit('update:modelValue', value)
 }
 function onKeydown(event: KeyboardEvent) {
+  if (event.target instanceof Element && event.target.closest('[data-code-search]')) return
   if (event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return
   if (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y') {
     event.preventDefault()
@@ -155,7 +158,8 @@ function transform(action: 'format' | 'escape' | 'unescape') {
     const value = action === 'format' ? formatJsonText(props.modelValue) : action === 'escape' ? escapeJsonText(props.modelValue).value : unescapeJsonText(props.modelValue).value
     validationPaused.value = false
     if (value === props.modelValue) analyze(value, true)
-    else update(value)
+    else if (!update(value)) return
+    if (action === 'format') void codeEditor.value?.resetScroll()
   } catch (error) { notifications.notify(`请先修正 JSON：${(error as Error).message}`, { type: 'warning' }) }
 }
 function extractJson() {
@@ -201,7 +205,7 @@ function edit(path: number[], action: JsonEdit) {
     <div class="json-editor__panes" :class="`mode-${mode}`">
       <div v-show="mode !== 'tree'" class="json-editor__code">
         <div class="json-editor__pane-label"><Code2 :size="13" />{{ escaped ? '转义文本' : 'JSON 源码' }}<small>{{ largeSource ? '大文本性能模式 · 已暂停高亮' : 'Enter 自动缩进 · Tab 缩进' }}</small></div>
-        <CodeEditor :model-value="modelValue" language="JSON" :escaped="escaped" placeholder="粘贴 JSON，或输入 { 开始编辑…" :required="mode !== 'tree'" @update:model-value="update" />
+        <CodeEditor ref="codeEditor" :model-value="modelValue" language="JSON" :escaped="escaped" searchable placeholder="粘贴 JSON，或输入 { 开始编辑…" :required="mode !== 'tree'" @update:model-value="update" />
       </div>
       <div v-if="mode !== 'code'" class="json-editor__structure">
         <div class="json-editor__pane-label"><GitBranch :size="13" />结构编辑<small>{{ structure.nodeCount > 2_000 ? '大型结构 · 请按需展开' : '直接修改字段、类型和值' }}</small><button type="button" aria-label="展开全部字段" :title="canExpandAll ? '展开全部' : '字段过多，请按需展开'" :disabled="validationPaused || buildingTree || !canExpandAll" @click="expandAll"><ChevronsDownUp :size="14" /></button><button type="button" aria-label="折叠全部字段" title="折叠全部" :disabled="validationPaused || buildingTree" @click="expansion = { open: false, revision: expansion.revision + 1 }"><ChevronsUpDown :size="14" /></button></div>

@@ -1,13 +1,14 @@
-import type { CodeSnippet, DevLogEntry, LogCategory, MarkdownDocument } from '../types/index.ts'
+import type { CodeSnippet, MarkdownDocument } from '../types/index.ts'
+import type { FlowchartSummary } from '../types/flowcharts.ts'
 import { matchesDocumentSearch, matchesSearch } from './search.ts'
 
-export type KnowledgeItemType = 'documents' | 'snippets' | 'logs'
+export type KnowledgeItemType = 'documents' | 'snippets' | 'flowcharts'
 export type KnowledgeTypeFilter = 'all' | KnowledgeItemType
 
 export type UnifiedKnowledgeItem =
   | { type: 'documents'; id: string; domainId: string | null; title: string; summary: string; detail: string; updatedAt: string; featured: boolean; source: MarkdownDocument }
   | { type: 'snippets'; id: string; domainId: string | null; title: string; summary: string; detail: string; updatedAt: string; featured: boolean; source: CodeSnippet }
-  | { type: 'logs'; id: string; domainId: string | null; title: string; summary: string; detail: string; updatedAt: string; featured: boolean; source: DevLogEntry }
+  | { type: 'flowcharts'; id: string; domainId: string | null; title: string; summary: string; detail: string; updatedAt: string; featured: boolean; source: FlowchartSummary }
 
 export interface KnowledgeFilters {
   type: KnowledgeTypeFilter
@@ -16,7 +17,7 @@ export interface KnowledgeFilters {
   unassigned: string
   query: string
   featuredOnly: boolean
-  logCategory: 'ALL' | LogCategory
+  flowchartMatches?: ReadonlySet<string>
 }
 
 function firstCodeLine(value: string) {
@@ -26,7 +27,7 @@ function firstCodeLine(value: string) {
 export function buildUnifiedKnowledgeItems(
   documents: MarkdownDocument[],
   snippets: CodeSnippet[],
-  logs: DevLogEntry[],
+  flowcharts: FlowchartSummary[],
 ): UnifiedKnowledgeItem[] {
   return [
     ...documents.map((source): UnifiedKnowledgeItem => ({
@@ -39,11 +40,11 @@ export function buildUnifiedKnowledgeItems(
       summary: firstCodeLine(source.code) || '这段代码还没有内容。',
       detail: source.language, updatedAt: source.updatedAt, featured: source.favorite, source,
     })),
-    ...logs.map((source): UnifiedKnowledgeItem => ({
-      type: 'logs', id: source.id, domainId: source.domainId,
-      title: source.title || source.content.slice(0, 34) || '未命名日志',
-      summary: source.content || '这条日志还没有正文。', detail: source.category,
-      updatedAt: source.updatedAt, featured: source.pinned, source,
+    ...flowcharts.map((source): UnifiedKnowledgeItem => ({
+      type: 'flowcharts', id: source.id, domainId: source.domainId,
+      title: source.title,
+      summary: source.excerpt || '点击查看流程图。', detail: `${source.nodeCount} 个图形 · ${source.edgeCount} 条连线`,
+      updatedAt: source.updatedAt, featured: source.favorite, source,
     })),
   ].sort((a, b) => Number(b.featured) - Number(a.featured) || b.updatedAt.localeCompare(a.updatedAt))
 }
@@ -53,12 +54,11 @@ export function filterUnifiedKnowledgeItems(items: UnifiedKnowledgeItem[], filte
     if (filters.type !== 'all' && item.type !== filters.type) return false
     if (filters.domain === filters.unassigned ? item.domainId : filters.domain !== filters.allDomains && item.domainId !== filters.domain) return false
     if (filters.featuredOnly && !item.featured) return false
-    if (item.type === 'logs' && filters.logCategory !== 'ALL' && item.source.category !== filters.logCategory) return false
     return item.type === 'documents'
       ? matchesDocumentSearch(filters.query, item.source)
       : item.type === 'snippets'
         ? matchesSearch(filters.query, item.source.title, item.source.language, item.source.code)
-        : matchesSearch(filters.query, item.source.title, item.source.content, item.source.tags.join(' '))
+        : !filters.query.trim() || (filters.flowchartMatches ? filters.flowchartMatches.has(item.id) : matchesSearch(filters.query, item.source.title, item.source.excerpt))
   })
 }
 

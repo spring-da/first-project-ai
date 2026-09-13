@@ -40,6 +40,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/display-name-availability").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/markdown-shares/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/public/knowledge-shares/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/share-bundles/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/api/v1/auth/me", "/api/v1/auth/password", "/api/v1/auth/logout-all").authenticated()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")

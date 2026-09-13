@@ -1,23 +1,68 @@
+# Dependencies and generated build output.
 **/node_modules/
 **/target/
 **/dist/
+**/dist-ssr/
 **/.ui-test-dist/
+**/.vite/
+**/.vite-temp/
+**/.cache/
+**/*.tsbuildinfo
+
+# Local configuration and secrets (keep example configuration tracked).
 **/.idea/
 **/.env
 **/.env.*
 !**/.env.example
 **/application-local.yml
 **/application-prod.yml
+
+# Logs, runtime caches and local backups.
 **/*.log
-**/*.tsbuildinfo
 **/__pycache__/
 **/*.py[cod]
 **/.pytest_cache/
 **/backups/
+
+# Disposable scripts/data belong in these directories, not src/ or tests/.
+**/tmp/
+**/temp/
+**/.tmp/
+**/.temp/
+**/.test-tmp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.swp
+*.swo
+*~
+
+# Generated test reports and browser captures, not regression test source.
+# Keep tests/*.test.ts, tests/ui fixtures and src/test/ available to CI.
+**/coverage/
+**/.nyc_output/
+**/test-results/
+**/test-reports/
+**/playwright-report/
+**/blob-report/
+**/playwright/.cache/
+**/test-artifacts/
+**/.test-artifacts/
+**/tests/ui/artifacts/
+**/tests/ui/screenshots/
+**/tests/ui/videos/
+**/tests/ui/traces/
+/screenshots/
 
 # Local Codex tools, temporary scripts, rehearsal data and test artifacts.
 **/.codex/
 **/.codex-*
 **/codex-*
 **/codex_*
+
+# Operating-system metadata.
 .DS_Store
+Thumbs.db
+Desktop.ini

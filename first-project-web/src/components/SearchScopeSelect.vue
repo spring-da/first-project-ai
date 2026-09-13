@@ -11,7 +11,7 @@ const emit = defineEmits<{
 }>()
 const options = [
   { value: 'page' as const, label: '当前列表', description: '只筛选正在查看的内容', icon: ListFilter },
-  { value: 'global' as const, label: '全局', description: '搜索项目、文章、代码与日志', icon: Globe2 },
+  { value: 'global' as const, label: '全局', description: '搜索项目、文章、代码与流程图', icon: Globe2 },
 ]
 const selected = computed(() => options.find((option) => option.value === props.modelValue)!)
 const root = ref<HTMLElement | null>(null)
@@ -85,8 +85,8 @@ onBeforeUnmount(() => window.removeEventListener('pointerdown', onPointerDown))
 
 <template>
   <div ref="root" class="scope-select" @keydown="onKeydown" @focusout="onFocusOut">
-    <button ref="trigger" class="scope-trigger" :class="{ open: isOpen }" type="button" :aria-label="`搜索范围：${selected.label}`" aria-haspopup="listbox" :aria-expanded="isOpen" :aria-controls="isOpen ? listId : undefined" @click="isOpen ? close() : open()">
-      <span>{{ selected.label }}</span><ChevronDown :size="13" :class="{ rotated: isOpen }" />
+    <button ref="trigger" class="scope-trigger" :class="{ open: isOpen }" type="button" :title="`搜索范围：${selected.label}`" :aria-label="`搜索范围：${selected.label}`" aria-haspopup="listbox" :aria-expanded="isOpen" :aria-controls="isOpen ? listId : undefined" @click="isOpen ? close() : open()">
+      <component :is="selected.icon" class="scope-trigger__compact-icon" :size="16" aria-hidden="true" /><span>{{ selected.label }}</span><ChevronDown :size="13" :class="{ rotated: isOpen }" />
     </button>
     <Transition name="scope-menu">
       <div v-if="isOpen" :id="listId" class="scope-menu" role="listbox" aria-label="选择搜索范围">
@@ -106,6 +106,7 @@ onBeforeUnmount(() => window.removeEventListener('pointerdown', onPointerDown))
 .scope-trigger { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 80px; padding: 5px 7px; color: var(--subtle); border: 1px solid transparent; border-radius: 7px; background: transparent; cursor: pointer; font-size: 12px; white-space: nowrap; transition: color .15s, background .15s; }
 .scope-trigger:hover, .scope-trigger.open { color: var(--accent); background: var(--accent-soft); }
 .scope-trigger svg { flex-shrink: 0; transition: transform .18s; }
+.scope-trigger .scope-trigger__compact-icon { display: none; }
 .scope-trigger .rotated { transform: rotate(180deg); }
 .scope-menu { position: absolute; z-index: 30; top: calc(100% + 14px); left: -8px; width: 270px; padding: 7px; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--panel); box-shadow: 0 12px 36px rgba(12,23,46,.14), 0 2px 8px rgba(12,23,46,.04); transform-origin: top left; }
 .scope-caption { padding: 5px 9px 9px; color: var(--muted); font-size: 11px; letter-spacing: .6px; }
@@ -126,5 +127,10 @@ onBeforeUnmount(() => window.removeEventListener('pointerdown', onPointerDown))
   .scope-select { padding-right: 4px; }
   .scope-trigger { min-width: 72px; padding-inline: 4px; gap: 4px; font-size: 11px; }
   .scope-menu { position: fixed; top: 60px; left: 16px; width: min(270px, calc(100vw - 32px)); }
+}
+@media (max-width: 400px) {
+  .scope-trigger { min-width: 40px; justify-content: center; }
+  .scope-trigger > span { display: none; }
+  .scope-trigger .scope-trigger__compact-icon { display: block; }
 }
 </style>

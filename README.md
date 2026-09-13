@@ -2,7 +2,7 @@
 
 Vue 3 + TypeScript 前端和 Spring Boot + Java 26 后端，统一存放在此仓库。
 
-- `first-project-web/`：工作台、任务、项目、Markdown、代码片段、开发日志、系统公告、意见交流、系统工具和人员管理。
+- `first-project-web/`：工作台、任务、项目、Markdown、代码片段、流程图、系统公告、意见交流、系统工具和人员管理。
 - `first-project-back/`：JWT 认证、邀请注册、账号隔离、数据 API、系统公告、意见交流、历史版本、回收站、公开只读分享和 OSS 图片。
 
 ## 管理员管理成员数据
@@ -47,12 +47,12 @@ mvn -B -ntp verify
 
 部署与已有数据导入见 [PostgreSQL 操作步骤](first-project-back/docs/POSTGRESQL_SETUP.md)：启动项目自动建表，再用 DataGrip 执行转换后的业务数据 DML。
 
-复制 `first-project-back/.env.example` 为同目录 `.env`，填写 PostgreSQL、JWT、CORS 和 OSS 配置。导入已有账号时保持初始管理员邮箱和密码为空，再运行：
+复制 `first-project-back/.env.example` 为同目录 `.env`，填写 PostgreSQL、JWT、CORS 和 OSS 配置。当前部署域名为 `https://springda.top`，先按 [证书放置与 HTTPS 部署说明](first-project-back/certs/README.md) 将证书链和私钥放入 `first-project-back/certs/`，并设置 `CORS_ALLOWED_ORIGINS=https://springda.top`。证书缺失时前端 Nginx 无法启动。导入已有账号时保持初始管理员邮箱和密码为空，再运行：
 
 ```powershell
 docker compose --project-directory first-project-back -f first-project-back/compose.yml up -d --build --remove-orphans
 ```
 
-新数据库由 Flyway 执行 PostgreSQL V17 基线，包含现有全部业务表。Compose 启用 pgvector，为后续 RAG 向量检索提供数据库基础。前端访问端口为 8000。
+新数据库由 Flyway 执行 PostgreSQL V17 基线，包含现有全部业务表。Compose 启用 pgvector，为后续 RAG 向量检索提供数据库基础。前端使用 443 端口提供 HTTPS，80 端口仅将 `springda.top` 的请求跳转到 `https://springda.top`；直接使用 IP 或其他主机名访问会被拒绝，不再开放 8000 端口。
 
 接口契约见 [API 文档](first-project-back/docs/API.md)。

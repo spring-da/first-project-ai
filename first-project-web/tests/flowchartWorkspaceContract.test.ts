@@ -4,15 +4,17 @@ import test from 'node:test'
 
 const workspaceSource = readFileSync(new URL('../src/components/flowcharts/FlowchartWorkspace.vue', import.meta.url), 'utf8')
 const inspectorSource = readFileSync(new URL('../src/components/flowcharts/InspectorPanel.vue', import.meta.url), 'utf8')
+const shellSource = readFileSync(new URL('../src/components/flowcharts/FlowchartEditorShell.vue', import.meta.url), 'utf8')
 
 test('flowchart workspace uses a state-aware inspector and focused-editor chrome', () => {
-  assert.match(workspaceSource, /import InspectorPanel/)
-  assert.match(workspaceSource, /<InspectorPanel/)
-  assert.match(workspaceSource, /:collapsed="!inspectorOpen"/)
+  assert.match(workspaceSource, /import FlowchartEditorShell/)
+  assert.match(workspaceSource, /<FlowchartEditorShell/)
+  assert.match(shellSource, /<InspectorPanel/)
+  assert.match(shellSource, /:collapsed="preferences\.inspectorCollapsed"/)
   assert.doesNotMatch(workspaceSource, /FlowchartProperties/)
   assert.match(workspaceSource, /:global\(\.writing-mode\)\s+\.flow-workspace/)
-  assert.match(workspaceSource, /flow-header__actions[^}]*overflow:\s*visible/)
-  assert.match(workspaceSource, /flow-header__actions \.button span[^}]*white-space:\s*nowrap/)
+  assert.match(shellSource, /flowchart-editor-shell__actions/)
+  assert.match(shellSource, /flowchart-editor-shell__export-menu/)
 })
 
 test('flowchart inspector keeps its header visible and exposes keyboard focus affordances', () => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
-import { ArrowLeft, Save, Share2, Download, History, Pencil, Workflow, Diamond, Database, LayoutTemplate, CloudCheck, LoaderCircle, AlertCircle, RotateCcw, FileJson, Smartphone, Heart } from 'lucide-vue-next'
+import { Workflow, Diamond, Database, LoaderCircle, AlertCircle, RotateCcw, Smartphone, Heart } from 'lucide-vue-next'
 import type { FlowchartDiagram, FlowchartDocument, FlowchartDraft, FlowNode, FlowEdge, FlowNodeKind, FlowchartSummary, FlowchartRevision, FlowchartRevisionDetail } from '../../types/flowcharts'
 import type { KnowledgeDomain } from '../../types'
 import { useAuthStore } from '../../stores/auth'
@@ -14,21 +14,21 @@ import type { LocalFlowchartDraft } from '../../utils/flowchartDrafts'
 import { createClientId } from '../../utils/clientId'
 import { copyDraft, emptyDiagram, createTemplate, exportFlowchartSource, downloadBlob, importFlowchartSource, validateDiagram } from '../../utils/flowcharts'
 import { createNodeLibraryController } from '../../utils/flowchartEditorState'
-import InspectorPanel from './InspectorPanel.vue'
 import FlowchartStarter from './FlowchartStarter.vue'
-import NodeLibraryPanel from './NodeLibraryPanel.vue'
+import FlowchartEditorShell from './FlowchartEditorShell.vue'
 import AppModal from '../AppModal.vue'
 const FlowchartCanvas = defineAsyncComponent(() => import('./FlowchartCanvas.vue'))
 const ShareDialog = defineAsyncComponent(() => import('../ShareDialog.vue'))
 const props = defineProps<{ documentId?: string; domainId: string | null; domains: KnowledgeDomain[]; initialDiagram?: FlowchartDiagram; initialTitle?: string; startEditing?: boolean }>()
 const emit = defineEmits<{ close: []; saved: [document: FlowchartSummary] }>()
 interface CanvasHandle { add: (kind: FlowNodeKind) => void; startDrag: (kind: FlowNodeKind, event: MouseEvent) => void; updateCell: (cell: FlowNode | FlowEdge) => void; selectId: (id: string | null) => void; action: (name: 'copy' | 'paste' | 'delete' | 'front' | 'back') => void; fit: () => void; keepSelectedInView: () => void; flush: () => void; exportImage: (kind: 'png' | 'svg', title: string) => Promise<void>; getDiagram: () => FlowchartDiagram }
+interface EditorShellHandle { canvas?: CanvasHandle; focusTitle: () => void; focusInspectorLabel: () => void }
 const auth = useAuthStore(), notifications = useNotificationStore(), confirmation = useConfirmationStore()
 const ownerKey = auth.workspaceKey ?? '', localId = createClientId(), lifetime = new AbortController()
-const canvas = ref<CanvasHandle>(), inspector = ref<InstanceType<typeof InspectorPanel>>(), titleInput = ref<HTMLInputElement>(), importInput = ref<HTMLInputElement>()
+const editorShell = ref<EditorShellHandle>(), canvas = computed(() => editorShell.value?.canvas), importInput = ref<HTMLInputElement>()
 const session = shallowRef<FlowchartSession | null>(null), tick = ref(0), loading = ref(true), loadingError = ref(''), localError = ref(''), localSaved = ref('')
 const editing = ref(!!props.startEditing), showStarter = ref(!props.documentId), smallScreen = ref(window.matchMedia('(max-width: 767px)').matches)
-const selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), showExport = ref(false), exporting = ref(false), showShare = ref(false)
+const selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), exporting = ref(false), showShare = ref(false)
 const drafts = ref<LocalFlowchartDraft[]>([]), showHistory = ref(false), revisions = ref<FlowchartRevision[]>([]), revisionPage = ref(0), revisionBusy = ref(false), revisionPreview = shallowRef<FlowchartRevisionDetail | null>(null)
 let storage: ReturnType<typeof createFlowchartDraftStorage> | undefined
 try { storage = createFlowchartDraftStorage() } catch { localError.value = '浏览器不支持本机草稿存储，请及时保存或导出源文件。' }
@@ -62,6 +62,7 @@ const starterTemplates: Array<{ kind: 'sequence' | 'decision' | 'architecture'; 
   { kind: 'architecture', title: '系统结构', description: '说明应用、服务与数据之间的关系。', preview: '前端  →  服务  →  数据库' },
 ]
 const statusLabel = computed(() => status.value === 'saving' ? '正在保存…' : status.value === 'conflict' ? '版本冲突' : status.value === 'error' ? '尚未保存到云端' : dirty.value ? '有未保存修改' : doc.value ? '所有修改已保存' : '新建画布')
+const statusTone = computed<'default' | 'warning' | 'saving'>(() => status.value === 'saving' ? 'saving' : status.value === 'error' || status.value === 'conflict' ? 'warning' : 'default')
 function clearSaveTimers() { clearTimeout(idleTimer); clearTimeout(maxTimer); clearTimeout(retryTimer); idleTimer = maxTimer = retryTimer = undefined }
 function install(d: FlowchartDraft, saved: FlowchartDocument | null, creationKey = createClientId()) {
   session.value?.dispose(); clearSaveTimers()
@@ -78,7 +79,7 @@ async function startNewDraft(next: FlowchartDraft) {
   editing.value = true
   showStarter.value = false
   await nextTick()
-  titleInput.value?.focus()
+  editorShell.value?.focusTitle()
 }
 function startBlank() { void startNewDraft({ title: props.initialTitle || '未命名流程图', domainId: props.domainId, favorite: false, diagram: props.initialDiagram ?? emptyDiagram() }) }
 function startTemplate(kind: 'sequence' | 'decision' | 'architecture') { void startNewDraft({ title: '未命名流程图', domainId: props.domainId, favorite: false, diagram: createTemplate(kind) }) }
@@ -93,21 +94,9 @@ async function importFile(event: Event) {
   } catch (cause) { notifyError((cause as Error).message) }
 }
 
-function openProperties(focusLabel = false) {
-  if (readOnly.value) return
-  if (!inspectorOpen.value) toggleInspector()
-  if (focusLabel) void nextTick(() => inspector.value?.focusLabel())
-}
-
-function toggleProperties() {
-  toggleInspector()
-}
-
 function selectionChanged(cell: FlowNode | FlowEdge | null) {
   selected.value = cell
 }
-
-function editSelected() { openProperties(true) }
 function record(): LocalFlowchartDraft | null {
   const s = session.value
   if (!s || !ownerKey) return null
@@ -212,7 +201,7 @@ async function applyTemplate(kind: 'sequence' | 'decision' | 'architecture') {
 function notifyError(message: string) { notifications.notify(message, { type: 'warning' }) }
 async function exportFile(kind: 'source' | 'png' | 'svg') {
   if (exporting.value) return
-  showExport.value = false; exporting.value = true
+  exporting.value = true
   try {
     canvas.value?.flush()
     if (kind === 'source') downloadBlob(new Blob([exportFlowchartSource(draft.value.title, draft.value.diagram)], { type: 'application/json' }), `${draft.value.title || '流程图'}.flowchart.json`)
@@ -236,6 +225,13 @@ async function restoreRevision() {
 }
 function shortcut(event: KeyboardEvent) {
   if (!readOnly.value && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !showHistory.value && !showShare.value && !confirmation.current && !document.body.classList.contains('modal-open')) { event.preventDefault(); event.stopPropagation(); void save('MANUAL') }
+}
+function manualSave() {
+  if (readOnly.value) {
+    if (!smallScreen.value && session.value) editing.value = true
+    return
+  }
+  void save('MANUAL')
 }
 function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value || status.value === 'saving') { void persist().catch(() => {}); event.preventDefault(); event.returnValue = '' } }
 function online() { if (dirty.value && status.value !== 'conflict') void save('AUTO') }
@@ -264,30 +260,13 @@ defineExpose({ canLeave })
   <section class="flow-workspace" aria-label="流程图工作区" @keydown.capture="shortcut">
     <FlowchartStarter v-if="showStarter" :templates="starterTemplates" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
     <template v-else>
-    <header class="flow-header">
-      <button type="button" class="flow-back" aria-label="返回知识列表" @click="close"><ArrowLeft :size="18" /></button>
-      <span class="flow-header__icon"><Workflow :size="22" /></span>
-      <div class="flow-header__title"><input v-if="!readOnly && session" ref="titleInput" :value="draft.title" maxlength="200" aria-label="流程图标题" placeholder="输入流程图标题" @input="field('title', ($event.target as HTMLInputElement).value)" /><h1 v-else>{{ draft.title || '流程图' }}</h1><span role="status" :class="{ warning: status === 'error' || status === 'conflict' }"><LoaderCircle v-if="status === 'saving'" :size="12" class="spin" /><CloudCheck v-else :size="12" />{{ statusLabel }}</span></div>
-      <div class="flow-header__actions">
-        <button v-if="!readOnly" type="button" class="button button-ghost" @click="showTemplates = true"><LayoutTemplate :size="15" /><span>模板</span></button>
-        <button v-if="doc" type="button" class="button button-ghost" @click="history()"><History :size="15" /><span>历史</span></button>
-        <div class="flow-export"><button type="button" class="button button-ghost" :disabled="exporting || !session" :aria-expanded="showExport" @click="showExport = !showExport"><Download :size="15" /><span>{{ exporting ? '导出中' : '导出' }}</span></button><div v-if="showExport" class="flow-export__menu"><button type="button" @click="exportFile('png')">PNG 图片</button><button type="button" @click="exportFile('svg')">SVG 矢量图</button><button type="button" @click="exportFile('source')"><FileJson :size="14" />可编辑源文件</button></div></div>
-        <button type="button" class="button button-ghost" :disabled="!session || status === 'conflict'" @click="share"><Share2 :size="15" /><span>分享</span></button>
-        <button v-if="readOnly && !smallScreen && session" type="button" class="button button-primary" @click="editing = true"><Pencil :size="15" />编辑流程图</button>
-        <button v-if="!readOnly" type="button" class="button button-primary" :disabled="!session || status === 'saving' || status === 'conflict'" @click="save('MANUAL')"><Save :size="15" />保存</button>
-      </div>
-    </header>
     <div v-if="session" class="flow-meta"><label><span>目录</span><select :value="draft.domainId ?? ''" :disabled="readOnly" @change="field('domainId', ($event.target as HTMLSelectElement).value || null)"><option value="">未分类</option><option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.name }}</option></select></label><button type="button" :disabled="readOnly" :class="{ active: draft.favorite }" @click="field('favorite', !draft.favorite)"><Heart :size="13" :fill="draft.favorite ? 'currentColor' : 'none'" />{{ draft.favorite ? '已收藏' : '收藏' }}</button><span>{{ draft.diagram.nodes.length }} 个图形 · {{ draft.diagram.edges.length }} 条连线</span><small v-if="localSaved">本机草稿已备份</small></div>
     <div v-if="smallScreen" class="flow-notice"><Smartphone :size="15" />手机支持查看和缩放，请在电脑上编辑图形。</div>
     <div v-if="error || localError" class="flow-notice warning" role="alert"><AlertCircle :size="16" /><span>{{ error || localError }}<small v-if="error && localError">{{ localError }}</small></span><template v-if="status === 'conflict'"><button type="button" @click="reloadCloud">读取云端版本</button><button type="button" @click="saveCopy">另存本机版本</button></template><button v-else-if="error" type="button" @click="save('MANUAL')">重试保存</button><button type="button" @click="exportFile('source')">导出备份</button></div>
     <div v-if="drafts.length" class="flow-drafts"><strong><RotateCcw :size="15" />发现本机草稿</strong><div v-for="record in drafts" :key="record.id"><span>{{ record.draft.title }} · {{ new Date(record.savedAt).toLocaleString() }}</span><button type="button" @click="recover(record)">恢复编辑</button><button type="button" @click="discard(record)">删除草稿</button></div></div>
     <div v-if="loading" class="flow-loading"><LoaderCircle :size="24" class="spin" />正在打开画布…</div>
     <div v-else-if="loadingError" class="flow-loading" role="alert"><AlertCircle :size="24" />{{ loadingError }}</div>
-    <div v-else-if="session" class="flow-body">
-      <NodeLibraryPanel v-if="!readOnly" :collapsed="workbenchPreferences.libraryCollapsed" :recent-kinds="workbenchPreferences.recentKinds" @create="createShape" @drag-start="startShapeDrag" @toggle="toggleNodeLibrary" />
-      <FlowchartCanvas :key="String(readOnly)" ref="canvas" class="flow-workspace__canvas" :diagram="draft.diagram" :readonly="readOnly" :viewport-key="`${ownerKey}:${doc?.id || localId}`" :properties-open="inspectorOpen" @change="diagramChanged" @select="selectionChanged" @edit-label="editSelected" @toggle-properties="toggleProperties" @error="notifyError" />
-      <InspectorPanel v-if="!readOnly" ref="inspector" :selected="selected" :nodes="draft.diagram.nodes" :edges="draft.diagram.edges" :collapsed="!inspectorOpen" @change="canvas?.updateCell($event)" @action="canvas?.action($event)" @select="canvas?.selectId($event)" @toggle="toggleInspector" />
-    </div>
+    <FlowchartEditorShell v-else-if="session" :key="String(readOnly)" ref="editorShell" :draft="draft" :status-label="statusLabel" :status-tone="statusTone" :selected="selected" :preferences="workbenchPreferences" :read-only="readOnly" :viewport-key="`${ownerKey}:${doc?.id || localId}`" :exporting="exporting" :history-available="!!doc" :share-available="!!doc && status !== 'conflict'" :save-available="status !== 'conflict'" :can-edit="!smallScreen" @title="field('title', $event)" @toggle-library="toggleNodeLibrary" @toggle-inspector="toggleInspector" @change="diagramChanged" @selection="selectionChanged" @canvas-action="canvas?.action($event)" @library-create="createShape" @library-drag-start="startShapeDrag" @manual-save="manualSave" @templates="showTemplates = true" @history="history()" @export="exportFile" @share="share" @close="close" @error="notifyError" />
     <AppModal v-if="showTemplates" title="从模板开始" description="选择常用结构，再根据你的流程调整。" @close="showTemplates = false"><div class="flow-template-list"><button type="button" @click="applyTemplate('sequence')"><Workflow :size="32" /><strong>顺序流程</strong><span>开始 → 处理 → 结束</span></button><button type="button" @click="applyTemplate('decision')"><Diamond :size="32" /><strong>条件分支</strong><span>判断条件，分为两条路径</span></button><button type="button" @click="applyTemplate('architecture')"><Database :size="32" /><strong>系统结构</strong><span>前端 → 后端 → 数据库</span></button></div></AppModal>
     <AppModal v-if="showHistory" title="历史版本" description="自动检查点间隔 5 分钟，手动保存即时生成；保留最近 100 条。" wide @close="showHistory = false"><div v-if="revisionBusy" role="status">正在读取历史…</div><div class="flow-history"><div class="flow-history__list"><button v-for="revision in revisions" :key="revision.id" type="button" :class="{ active: revisionPreview?.id === revision.id }" @click="previewRevision(revision.id)"><strong>{{ revision.title }}</strong><small>{{ new Date(revision.createdAt).toLocaleString() }} · v{{ revision.documentVersion }}</small></button><p v-if="!revisions.length">暂无历史版本。</p><div class="flow-history__pages"><button type="button" :disabled="revisionPage === 0 || revisionBusy" @click="history(revisionPage - 1)">上一页</button><span>{{ revisionPage + 1 }}</span><button type="button" :disabled="revisions.length < 20 || revisionBusy" @click="history(revisionPage + 1)">下一页</button></div></div><div v-if="revisionPreview" class="flow-history__preview"><FlowchartCanvas :key="revisionPreview.id" :diagram="revisionPreview.diagram" readonly /><button type="button" class="button button-primary" :disabled="revisionBusy" @click="restoreRevision">恢复此版本</button></div></div></AppModal>
     <ShareDialog v-if="showShare && doc" :items="[{ type: 'FLOWCHART', id: doc.id, title: draft.title }]" @close="showShare = false" />

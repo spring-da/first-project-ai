@@ -4,6 +4,8 @@ import test from 'node:test'
 import * as editorState from '../src/utils/flowchartEditorState.ts'
 
 const source = readFileSync(new URL('../src/components/flowcharts/InspectorPanel.vue', import.meta.url), 'utf8')
+const shellSource = readFileSync(new URL('../src/components/flowcharts/FlowchartEditorShell.vue', import.meta.url), 'utf8')
+const workspaceSource = readFileSync(new URL('../src/components/flowcharts/FlowchartWorkspace.vue', import.meta.url), 'utf8')
 
 type NodeLibraryControllerFactory = (ownerKey: string, canvas: () => { add: (kind: 'rectangle' | 'diamond' | 'io') => void } | undefined, storage?: Pick<Storage, 'getItem' | 'setItem'>) => {
   key: string
@@ -77,4 +79,30 @@ test('clearing the inspector selection clears the canvas selection path', () => 
   assert.equal(replaceFlowchartSelection(graph, null), undefined)
   assert.deepEqual(selected, [])
   assert.match(source, /emit\('select',\s*selectionValue\(\$event\)\)/)
+})
+
+test('editor shell owns three-column composition', () => {
+  assert.match(shellSource, /class="flowchart-editor-shell"/)
+  assert.match(shellSource, /<NodeLibraryPanel/)
+  assert.match(shellSource, /<FlowchartCanvas/)
+  assert.match(shellSource, /<InspectorPanel/)
+  assert.match(shellSource, /grid-template-columns:\s*var\(--library-width\) minmax\(0, 1fr\) var\(--inspector-width\)/)
+})
+
+test('workspace retains persistence but delegates visual composition', () => {
+  assert.match(workspaceSource, /<FlowchartEditorShell/)
+  assert.match(workspaceSource, /new FlowchartSession/)
+  assert.doesNotMatch(workspaceSource, /class="flow-palette"/)
+})
+
+test('editor shell keeps keyboard-reachable panel rails and document actions around the canvas', () => {
+  assert.match(shellSource, /:collapsed="preferences\.libraryCollapsed"/)
+  assert.match(shellSource, /:collapsed="preferences\.inspectorCollapsed"/)
+  assert.match(shellSource, /@toggle="emit\('toggle-library'\)"/)
+  assert.match(shellSource, /@toggle="emit\('toggle-inspector'\)"/)
+  assert.match(workspaceSource, /@manual-save="manualSave"/)
+  assert.match(workspaceSource, /@templates="showTemplates = true"/)
+  assert.match(workspaceSource, /@history="history\(\)"/)
+  assert.match(workspaceSource, /@export="exportFile"/)
+  assert.match(shellSource, /defineExpose\(\{ canvas, focusTitle/)
 })

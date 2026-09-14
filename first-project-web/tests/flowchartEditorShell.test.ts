@@ -86,6 +86,6 @@ test('mounted editable editor forwards title input and exposes a focusable title
     assert.deepEqual(titles, ['新的流程图标题'])
     view.exposed.focusTitle()
     assert.equal(input.focused, true)
-    assert.match(shellSource, /flowchart-editor-shell__identity input:focus\s*\{\s*outline:\s*2px solid/)
+    assert.match(shellSource, /flowchart-editor-shell__identity input:focus-visible/)
   } finally { view.unmount() }
 })

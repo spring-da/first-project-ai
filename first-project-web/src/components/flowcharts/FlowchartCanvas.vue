@@ -7,7 +7,7 @@ import type { FlowchartDiagram, FlowNodeKind, FlowNode, FlowEdge } from '../../t
 import { nodeToCell, edgeToCell, graphDiagram } from '../../utils/flowchartAdapter'
 import { makeNode, makeEdge, validateDiagram, downloadBlob, flowchartFingerprint } from '../../utils/flowcharts'
 import { classifyCanvasWheel, normalizeCanvasWheelDelta } from '../../utils/flowchartEditor'
-import { readNativeFlowNodeKind } from '../../utils/flowchartEditorState'
+import { readNativeFlowNodeKind, replaceFlowchartSelection } from '../../utils/flowchartEditorState'
 import { describeOrthogonalSegments, ensureEditableOrthogonalRoute, insertOrthogonalVertex, moveOrthogonalSegment, moveOrthogonalVertex, normalizeOrthogonalPoints, removeOrthogonalVertex, createEdgeDragSnapshot, restoreEdgeDragSnapshot, type EdgePoint, type OrthogonalSegment } from '../../utils/flowchartEdgeEditor'
 
 const props = withDefaults(defineProps<{ diagram: FlowchartDiagram; readonly?: boolean; viewportKey?: string; propertiesOpen?: boolean }>(), { readonly: false })
@@ -501,7 +501,10 @@ onMounted(() => {
 })
 watch(() => props.diagram, value => { if (flowchartFingerprint(value) !== lastJson) replace(value) })
 onBeforeUnmount(() => { cancelEdgeDrag(); flush(); saveViewport(); disposed = true; cancelPendingDrag?.(); removeEdgeDragListeners(); cancelAnimationFrame(frame); observer?.disconnect(); host.value?.removeEventListener('wheel', handleWheel); dnd?.dispose(); graph?.dispose(); graph = undefined; edgeEditor.value = null })
-function selectId(id: string) { const cell = graph?.getCellById(id); if (cell && !props.readonly) { graph!.resetSelection([cell]); select(cell) } }
+function selectId(id: string | null) {
+  if (!graph || props.readonly) return
+  select(replaceFlowchartSelection(graph, id))
+}
 defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, keepSelectedInView, exportImage, flush, getDiagram: () => graph ? graphDiagram(graph) : props.diagram })
 </script>
 

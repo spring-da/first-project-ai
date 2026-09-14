@@ -65,6 +65,13 @@ export function readNativeFlowNodeKind(transfer: Pick<DataTransfer, 'getData'> |
   return isFlowchartShapeKind(kind) ? kind : null
 }
 
+/** Apply a picker selection without leaving stale X6 selection when its canvas option is chosen. */
+export function replaceFlowchartSelection<Cell extends { id: string }>(graph: { getCellById: (id: string) => Cell | null; resetSelection: (cells: Cell[]) => void }, id: string | null): Cell | undefined {
+  const cell = id ? graph.getCellById(id) ?? undefined : undefined
+  graph.resetSelection(cell ? [cell] : [])
+  return cell
+}
+
 /** Keep node-library state local to one user/workspace and degrade gracefully without browser storage. */
 export function createNodeLibraryController(ownerKey: string, canvas: () => NodeLibraryCanvas | undefined, storage?: Pick<Storage, 'getItem' | 'setItem'>): NodeLibraryController {
   const key = `devnest-flowchart-workbench:${ownerKey}`

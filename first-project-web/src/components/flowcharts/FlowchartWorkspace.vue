@@ -22,7 +22,7 @@ const FlowchartCanvas = defineAsyncComponent(() => import('./FlowchartCanvas.vue
 const ShareDialog = defineAsyncComponent(() => import('../ShareDialog.vue'))
 const props = defineProps<{ documentId?: string; domainId: string | null; domains: KnowledgeDomain[]; initialDiagram?: FlowchartDiagram; initialTitle?: string; startEditing?: boolean }>()
 const emit = defineEmits<{ close: []; saved: [document: FlowchartSummary] }>()
-interface CanvasHandle { add: (kind: FlowNodeKind) => void; startDrag: (kind: FlowNodeKind, event: MouseEvent) => void; updateCell: (cell: FlowNode | FlowEdge) => void; selectId: (id: string) => void; action: (name: 'copy' | 'paste' | 'delete' | 'front' | 'back') => void; fit: () => void; keepSelectedInView: () => void; flush: () => void; exportImage: (kind: 'png' | 'svg', title: string) => Promise<void>; getDiagram: () => FlowchartDiagram }
+interface CanvasHandle { add: (kind: FlowNodeKind) => void; startDrag: (kind: FlowNodeKind, event: MouseEvent) => void; updateCell: (cell: FlowNode | FlowEdge) => void; selectId: (id: string | null) => void; action: (name: 'copy' | 'paste' | 'delete' | 'front' | 'back') => void; fit: () => void; keepSelectedInView: () => void; flush: () => void; exportImage: (kind: 'png' | 'svg', title: string) => Promise<void>; getDiagram: () => FlowchartDiagram }
 const auth = useAuthStore(), notifications = useNotificationStore(), confirmation = useConfirmationStore()
 const ownerKey = auth.workspaceKey ?? '', localId = createClientId(), lifetime = new AbortController()
 const canvas = ref<CanvasHandle>(), inspector = ref<InstanceType<typeof InspectorPanel>>(), titleInput = ref<HTMLInputElement>(), importInput = ref<HTMLInputElement>()

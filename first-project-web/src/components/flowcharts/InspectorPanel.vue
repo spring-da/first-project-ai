@@ -4,7 +4,7 @@ import { ArrowDownToLine, ArrowUpToLine, ClipboardPaste, Copy, MousePointer2, Pa
 import type { FlowEdge, FlowNode } from '../../types/flowcharts'
 
 const props = defineProps<{ selected: FlowNode | FlowEdge | null; nodes: FlowNode[]; edges: FlowEdge[]; collapsed: boolean }>()
-const emit = defineEmits<{ change: [cell: FlowNode | FlowEdge]; action: [name: 'copy' | 'paste' | 'delete' | 'front' | 'back']; select: [id: string]; toggle: [] }>()
+const emit = defineEmits<{ change: [cell: FlowNode | FlowEdge]; action: [name: 'copy' | 'paste' | 'delete' | 'front' | 'back']; select: [id: string | null]; toggle: [] }>()
 
 const labelInput = ref<HTMLTextAreaElement>()
 
@@ -18,6 +18,7 @@ function update(key: string, value: unknown, style = false) {
 
 const value = (event: Event) => (event.target as HTMLInputElement).value
 const checked = (event: Event) => (event.target as HTMLInputElement).checked
+const selectionValue = (event: Event) => value(event) || null
 
 defineExpose({ focusLabel: () => labelInput.value?.focus() })
 </script>
@@ -34,7 +35,7 @@ defineExpose({ focusLabel: () => labelInput.value?.focus() })
 
       <label class="inspector-field">
         <span>当前对象</span>
-        <select :value="selected?.id ?? ''" @change="emit('select', value($event))">
+        <select :value="selected?.id ?? ''" @change="emit('select', selectionValue($event))">
           <option value="">画布（未选择对象）</option>
           <optgroup v-if="nodes.length" label="图形"><option v-for="node in nodes" :key="node.id" :value="node.id">{{ node.label || '无文字图形' }}</option></optgroup>
           <optgroup v-if="edges.length" label="连线"><option v-for="edge in edges" :key="edge.id" :value="edge.id">{{ edge.label || '未命名连线' }}</option></optgroup>

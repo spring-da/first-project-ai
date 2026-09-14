@@ -62,3 +62,19 @@ test('inspector exposes typed updates and a collapse action', () => {
   assert.match(source, /change: \[cell: FlowNode \| FlowEdge\]/)
   assert.match(source, /emit\('toggle'\)/)
 })
+
+test('clearing the inspector selection clears the canvas selection path', () => {
+  const replaceFlowchartSelection = (editorState as Record<string, unknown>).replaceFlowchartSelection as <Cell extends { id: string }>(graph: { getCellById: (id: string) => Cell | null; resetSelection: (cells: Cell[]) => void }, id: string | null) => Cell | undefined
+  assert.equal(typeof replaceFlowchartSelection, 'function')
+
+  const node = { id: 'node-1' }
+  let selected = [node]
+  const graph = {
+    getCellById: (id: string) => id === node.id ? node : null,
+    resetSelection: (cells: Array<typeof node>) => { selected = cells },
+  }
+
+  assert.equal(replaceFlowchartSelection(graph, null), undefined)
+  assert.deepEqual(selected, [])
+  assert.match(source, /emit\('select',\s*selectionValue\(\$event\)\)/)
+})

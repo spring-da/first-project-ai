@@ -52,3 +52,22 @@ test('edge previews normalize transient collinear points while dragging', () => 
 test('fit view uses the available canvas more efficiently for compact diagrams', () => {
   assert.match(canvasSource, /zoomToFit\(\{\s*padding:\s*32,\s*maxScale:\s*1\.25\s*\}/)
 })
+
+test('canvas keeps document actions out of the viewport toolbar', () => {
+  assert.match(canvasSource, /aria-label="画布工具"/)
+  assert.doesNotMatch(canvasSource, /分享流程图/)
+  assert.doesNotMatch(canvasSource, /历史版本/)
+})
+
+test('image export hides workbench overlays and restores them', () => {
+  assert.match(canvasSource, /exportingOverlay\.value = true/)
+  assert.match(canvasSource, /finally \{ exportingOverlay\.value = false/)
+  for (const overlay of ['flow-canvas__tools', 'flow-canvas__context', 'flow-canvas__edge-editor', 'flow-canvas__mini', 'flow-canvas__hint']) {
+    assert.match(canvasSource, new RegExp(`v-(?:if|show)="[^\"]*!exportingOverlay[^\"]*"[^>]*class="${overlay}"|class="${overlay}"[^>]*v-(?:if|show)="[^\"]*!exportingOverlay`, 's'))
+  }
+})
+
+test('panel collapse state schedules a selected-cell viewport recompute', () => {
+  assert.match(canvasSource, /panelCollapseState\?:/)
+  assert.match(canvasSource, /watch\(\(\) => props\.panelCollapseState,[\s\S]*nextTick\([\s\S]*keepSelectedInView/)
+})

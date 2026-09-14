@@ -2,7 +2,7 @@
 import { onMounted, onBeforeUnmount, ref, watch, nextTick, reactive, shallowRef } from 'vue'
 import { Graph, History, Selection, Snapline, Clipboard, Transform, MiniMap, Export, Dnd } from '@antv/x6'
 import type { Cell, Edge as X6Edge, EdgeView } from '@antv/x6'
-import { Minus, Plus, Scan, Map, Grid2X2, MousePointer2, Hand, Undo2, Redo2, Maximize2, PanelRightClose, PanelRightOpen, Copy, ClipboardPaste, Trash2, ArrowUpToLine, ArrowDownToLine } from 'lucide-vue-next'
+import { Minus, Plus, Scan, Map, Grid2X2, MousePointer2, Hand, Undo2, Redo2, Copy, ClipboardPaste, Trash2, ArrowUpToLine, ArrowDownToLine } from 'lucide-vue-next'
 import type { FlowchartDiagram, FlowNodeKind, FlowNode, FlowEdge } from '../../types/flowcharts'
 import { nodeToCell, edgeToCell, graphDiagram } from '../../utils/flowchartAdapter'
 import { makeNode, makeEdge, validateDiagram, downloadBlob, flowchartFingerprint } from '../../utils/flowcharts'
@@ -10,10 +10,16 @@ import { classifyCanvasWheel, normalizeCanvasWheelDelta } from '../../utils/flow
 import { readNativeFlowNodeKind, replaceFlowchartSelection } from '../../utils/flowchartEditorState'
 import { describeOrthogonalSegments, ensureEditableOrthogonalRoute, insertOrthogonalVertex, moveOrthogonalSegment, moveOrthogonalVertex, normalizeOrthogonalPoints, removeOrthogonalVertex, createEdgeDragSnapshot, restoreEdgeDragSnapshot, type EdgePoint, type OrthogonalSegment } from '../../utils/flowchartEdgeEditor'
 
-const props = withDefaults(defineProps<{ diagram: FlowchartDiagram; readonly?: boolean; viewportKey?: string; propertiesOpen?: boolean }>(), { readonly: false })
+const props = withDefaults(defineProps<{
+  diagram: FlowchartDiagram
+  readonly?: boolean
+  viewportKey?: string
+  propertiesOpen?: boolean
+  panelCollapseState?: { libraryCollapsed: boolean; inspectorCollapsed: boolean }
+}>(), { readonly: false })
 const emit = defineEmits<{ change: [diagram: FlowchartDiagram]; select: [cell: FlowNode | FlowEdge | null]; 'edit-label': []; 'toggle-properties': []; error: [message: string] }>()
 const root = ref<HTMLElement>(), host = ref<HTMLElement>(), mini = ref<HTMLElement>(), contextBar = ref<HTMLElement>()
-const zoom = ref(100), showMini = ref(true), grid = ref(true), pan = ref(false), canUndo = ref(false), canRedo = ref(false), selectedId = ref<string | null>(null), cellCount = ref(0)
+const zoom = ref(100), showMini = ref(true), grid = ref(true), pan = ref(false), canUndo = ref(false), canRedo = ref(false), selectedId = ref<string | null>(null), cellCount = ref(0), exportingOverlay = ref(false)
 const editorViewport = reactive({ width: 0, height: 0 })
 const contextStyle = ref<Record<string, string>>({ left: '8px', top: '66px', transform: 'none' })
 interface EdgeEditorHandle {
@@ -427,14 +433,6 @@ function keydown(event: KeyboardEvent) {
 function keyup(event: KeyboardEvent) { if (event.code === 'Space' && !pan.value && !props.readonly) graph?.disablePanning() }
 function togglePan() { pan.value = !pan.value; if (pan.value) graph?.enablePanning(); else graph?.disablePanning() }
 function toggleGrid() { grid.value = !grid.value; graph?.drawGrid(grid.value ? { type: 'dot', args: { color: '#cbd5e1', thickness: 1 } } : { type: 'dot', args: { color: 'transparent' } }) }
-async function fullscreen() {
-  try {
-    if (document.fullscreenElement) await document.exitFullscreen()
-    // Workspace dialogs and confirmations teleport to body. Keep them inside
-    // the fullscreen tree so templates, history and saving remain usable.
-    else await (root.value?.closest('.flow-workspace') ? document.documentElement : root.value)?.requestFullscreen()
-  } catch { emit('error', '浏览器暂不支持全屏显示。') }
-}
 function saveViewport() {
   if (!graph || !props.viewportKey) return
   try { localStorage.setItem(`devnest-flowchart-view:${props.viewportKey}`, JSON.stringify({ scale: graph.zoom(), ...graph.translate() })) } catch { /* Viewport persistence is optional. */ }
@@ -442,8 +440,13 @@ function saveViewport() {
 async function exportImage(format: 'png' | 'svg', title: string) {
   if (!graph) return
   flush(); validateDiagram(graphDiagram(graph))
-  graph.getCells().forEach(cell => graph!.findViewByCell(cell)?.hideTools()); transform?.clearWidgets()
+  // The graph remains mounted; only editor chrome is removed for a clean,
+  // document-only export. Waiting for Vue ensures conditional overlays have
+  // left the DOM before X6 serializes its SVG.
+  exportingOverlay.value = true
+  await nextTick()
   try {
+    graph.getCells().forEach(cell => graph!.findViewByCell(cell)?.hideTools()); transform?.clearWidgets()
     const options = { preserveDimensions: true, copyStyles: false, serializeImages: false, beforeSerialize(svg: SVGSVGElement) {
       svg.querySelectorAll('.x6-port, .x6-cell-tools, .x6-edge-tools').forEach(el => el.remove())
       svg.style.background = '#ffffff'
@@ -457,7 +460,7 @@ async function exportImage(format: 'png' | 'svg', title: string) {
       const bytes = Uint8Array.from(atob(data.split(',')[1]!), c => c.charCodeAt(0))
       downloadBlob(new Blob([bytes], { type: 'image/png' }), `${title}.png`)
     }
-  } finally { graph.getCells().forEach(cell => graph!.findViewByCell(cell)?.showTools()) }
+  } finally { exportingOverlay.value = false; graph.getCells().forEach(cell => graph!.findViewByCell(cell)?.showTools()) }
 }
 onMounted(() => {
   if (!host.value) return
@@ -500,6 +503,19 @@ onMounted(() => {
   } catch (error) { emit('error', `画布加载失败：${(error as Error).message}`) }
 })
 watch(() => props.diagram, value => { if (flowchartFingerprint(value) !== lastJson) replace(value) })
+watch(() => props.panelCollapseState, () => {
+  // The shell owns panel layout. Once its new column widths are committed,
+  // resize the X6 viewport and keep the active object inside the new bounds.
+  nextTick(() => {
+    if (!host.value) return
+    graph?.resize(host.value.clientWidth, host.value.clientHeight)
+    editorViewport.width = host.value.clientWidth
+    editorViewport.height = host.value.clientHeight
+    keepSelectedInView()
+    syncEdgeEditor()
+    nextTick(() => syncContextToolbar())
+  })
+}, { deep: true })
 onBeforeUnmount(() => { cancelEdgeDrag(); flush(); saveViewport(); disposed = true; cancelPendingDrag?.(); removeEdgeDragListeners(); cancelAnimationFrame(frame); observer?.disconnect(); host.value?.removeEventListener('wheel', handleWheel); dnd?.dispose(); graph?.dispose(); graph = undefined; edgeEditor.value = null })
 function selectId(id: string | null) {
   if (!graph || props.readonly) return
@@ -510,7 +526,7 @@ defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, ke
 
 <template>
   <div ref="root" class="flow-canvas" :class="{ 'flow-canvas--readonly': readonly }" tabindex="0" aria-label="流程图画布" @keydown="keydown" @keyup="keyup" @blur="() => { if (!pan && !readonly) graph?.disablePanning() }">
-    <div class="flow-canvas__tools" role="toolbar" aria-label="画布工具">
+    <div v-if="!exportingOverlay" class="flow-canvas__tools" role="toolbar" aria-label="画布工具">
       <template v-if="!readonly">
         <button type="button" :class="{ active: !pan }" aria-label="选择工具" :aria-pressed="!pan" @click="pan && togglePan()"><MousePointer2 :size="17" /></button>
         <button type="button" :class="{ active: pan }" aria-label="平移工具" :aria-pressed="pan" @click="togglePan"><Hand :size="17" /></button><i />
@@ -522,10 +538,8 @@ defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, ke
       <button type="button" aria-label="适应全部内容" title="适应全部内容" @click="fitContent"><Scan :size="17" /></button><i />
       <button type="button" aria-label="显示网格" :aria-pressed="grid" @click="toggleGrid"><Grid2X2 :size="17" /></button>
       <button type="button" aria-label="显示小地图" :aria-pressed="showMini" @click="showMini = !showMini"><Map :size="17" /></button>
-      <button type="button" aria-label="全屏画布" @click="fullscreen"><Maximize2 :size="17" /></button>
-      <button v-if="!readonly" type="button" aria-label="切换属性面板" :aria-expanded="propertiesOpen" @click="emit('toggle-properties')"><PanelRightClose v-if="propertiesOpen" :size="17" /><PanelRightOpen v-else :size="17" /></button>
     </div>
-    <div v-if="selectedId && !readonly" ref="contextBar" class="flow-canvas__context" :style="contextStyle" role="toolbar" aria-label="选中图形操作">
+    <div v-if="!exportingOverlay && selectedId && !readonly" ref="contextBar" class="flow-canvas__context" :style="contextStyle" role="toolbar" aria-label="选中图形操作">
       <button type="button" title="复制" aria-label="复制选中图形" @click="action('copy')"><Copy :size="15" /></button>
       <button type="button" title="粘贴" aria-label="粘贴图形" @click="action('paste')"><ClipboardPaste :size="15" /></button>
       <i aria-hidden="true" />
@@ -534,7 +548,7 @@ defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, ke
       <button type="button" class="danger" title="删除" aria-label="删除选中图形" @click="action('delete')"><Trash2 :size="15" /></button>
     </div>
     <div ref="host" class="flow-canvas__surface" @mousedown="root?.focus({ preventScroll: true })" @dragover="allowNativeNodeDrop" @drop="dropNativeNode"></div>
-    <div v-if="cellCount === 0 && !readonly" class="flow-canvas__empty" aria-label="空白画布提示">
+    <div v-if="!exportingOverlay && cellCount === 0 && !readonly" class="flow-canvas__empty" aria-label="空白画布提示">
       <div class="flow-canvas__empty-card">
         <span class="flow-canvas__empty-icon" aria-hidden="true"><Plus :size="19" /></span>
         <strong>从一个步骤开始</strong>
@@ -542,15 +556,15 @@ defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, ke
         <button type="button" class="flow-canvas__empty-action" @click="add('rectangle')"><Plus :size="15" />添加处理步骤</button>
       </div>
     </div>
-    <div v-if="edgeEditor && !readonly" class="flow-canvas__edge-editor" :class="{ 'is-dragging': edgeEditor.dragging }" :style="{ width: `${editorViewport.width}px`, height: `${editorViewport.height}px` }" aria-label="连线编辑工具">
+    <div v-if="!exportingOverlay && edgeEditor && !readonly" class="flow-canvas__edge-editor" :class="{ 'is-dragging': edgeEditor.dragging }" :style="{ width: `${editorViewport.width}px`, height: `${editorViewport.height}px` }" aria-label="连线编辑工具">
       <svg class="flow-edge-editor__svg" :width="editorViewport.width" :height="editorViewport.height" :viewBox="`0 0 ${editorViewport.width} ${editorViewport.height}`" aria-hidden="true">
         <path class="flow-edge-editor__hit" :d="edgeEditor.path" @click="insertEdgeVertex" />
         <path v-if="edgeEditor.dragging" class="flow-edge-editor__preview" :d="edgeEditor.path" />
       </svg>
       <button v-for="handle in edgeEditor.handles" :key="handle.id" type="button" class="flow-edge-editor__handle" :class="[`is-${handle.kind}`, handle.axis ? `axis-${handle.axis}` : '']" :aria-label="handle.label" :title="handle.label" :data-handle-index="handle.index" :data-handle-kind="handle.kind" :style="{ left: `${handle.x}px`, top: `${handle.y}px`, width: `${handle.width}px`, height: `${handle.height}px`, transform: `translate(-50%, -50%) rotate(${handle.angle}deg)` }" @pointerdown="beginEdgeHandleDrag(handle, $event)" @dblclick="removeEdgeVertex(handle, $event)"><span aria-hidden="true"></span></button>
     </div>
-    <div v-show="showMini" ref="mini" class="flow-canvas__mini" aria-label="画布小地图"></div>
-    <span class="flow-canvas__hint">{{ readonly ? '滚轮平移 · Ctrl + 滚轮缩放' : edgeEditor ? '点击线段插入拐点 · 双击拐点删除 · 拖动线段调整 · Esc 取消' : '拖动连接点连线 · 滚轮平移 · Ctrl + 滚轮缩放 · Shift 框选' }}</span>
+    <div v-if="!exportingOverlay" v-show="showMini" ref="mini" class="flow-canvas__mini" aria-label="画布小地图"></div>
+    <span v-if="!exportingOverlay" class="flow-canvas__hint">{{ readonly ? '滚轮平移 · Ctrl + 滚轮缩放' : edgeEditor ? '点击线段插入拐点 · 双击拐点删除 · 拖动线段调整 · Esc 取消' : '拖动连接点连线 · 滚轮平移 · Ctrl + 滚轮缩放 · Shift 框选' }}</span>
   </div>
 </template>
 

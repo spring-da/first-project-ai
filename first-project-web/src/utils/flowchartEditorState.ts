@@ -21,6 +21,7 @@ export interface NodeLibraryController {
   create: (kind: FlowNodeKind) => void
   dragStart: (kind: FlowNodeKind, event: DragEvent) => void
   toggleLibrary: () => void
+  toggleInspector: () => void
 }
 
 export function defaultWorkbenchPreferences(): FlowchartWorkbenchPreferences {
@@ -77,5 +78,6 @@ export function createNodeLibraryController(ownerKey: string, canvas: () => Node
     create(kind) { update(rememberRecentShape(preferences, kind)); canvas()?.add(kind) },
     dragStart(kind, event) { void event; update(rememberRecentShape(preferences, kind)) },
     toggleLibrary() { update(toggleWorkbenchPanel(preferences, 'library')) },
+    toggleInspector() { update(toggleWorkbenchPanel(preferences, 'inspector')) },
   }
 }

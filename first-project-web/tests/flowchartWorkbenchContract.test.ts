@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import * as editorState from '../src/utils/flowchartEditorState.ts'
+
+const source = readFileSync(new URL('../src/components/flowcharts/InspectorPanel.vue', import.meta.url), 'utf8')
 
 type NodeLibraryControllerFactory = (ownerKey: string, canvas: () => { add: (kind: 'rectangle' | 'diamond' | 'io') => void } | undefined, storage?: Pick<Storage, 'getItem' | 'setItem'>) => {
   key: string
@@ -8,6 +11,7 @@ type NodeLibraryControllerFactory = (ownerKey: string, canvas: () => { add: (kin
   create: (kind: 'rectangle' | 'diamond' | 'io') => void
   dragStart: (kind: 'rectangle' | 'diamond' | 'io', event: DragEvent) => void
   toggleLibrary: () => void
+  toggleInspector: () => void
 }
 
 test('node-library workspace actions forward creates and persist drag recents and collapse state', () => {
@@ -21,10 +25,11 @@ test('node-library workspace actions forward creates and persist drag recents an
   controller.create('diamond')
   controller.dragStart('io', {} as DragEvent)
   controller.toggleLibrary()
+  controller.toggleInspector()
 
   assert.deepEqual(created, ['diamond'])
   assert.equal(controller.key, 'devnest-flowchart-workbench:member-42')
-  assert.deepEqual(controller.preferences, { libraryCollapsed: true, inspectorCollapsed: false, recentKinds: ['io', 'diamond'] })
+  assert.deepEqual(controller.preferences, { libraryCollapsed: true, inspectorCollapsed: true, recentKinds: ['io', 'diamond'] })
   assert.deepEqual(JSON.parse(writes.at(-1)![1]), controller.preferences)
 })
 
@@ -45,4 +50,15 @@ test('node-library actions stay usable when workspace preference storage is unav
   controller.toggleLibrary()
 
   assert.deepEqual(controller.preferences, { libraryCollapsed: true, inspectorCollapsed: false, recentKinds: ['rectangle'] })
+})
+
+test('inspector has canvas help, node, edge and collapsed states', () => {
+  assert.match(source, /v-if="!selected"/)
+  assert.match(source, /v-else-if="'width' in selected"/)
+  assert.match(source, /aria-label="检查器"/)
+})
+
+test('inspector exposes typed updates and a collapse action', () => {
+  assert.match(source, /change: \[cell: FlowNode \| FlowEdge\]/)
+  assert.match(source, /emit\('toggle'\)/)
 })

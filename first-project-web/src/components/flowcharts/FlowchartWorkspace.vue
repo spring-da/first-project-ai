@@ -14,7 +14,7 @@ import type { LocalFlowchartDraft } from '../../utils/flowchartDrafts'
 import { createClientId } from '../../utils/clientId'
 import { copyDraft, emptyDiagram, createTemplate, exportFlowchartSource, downloadBlob, importFlowchartSource, validateDiagram } from '../../utils/flowcharts'
 import { createNodeLibraryController } from '../../utils/flowchartEditorState'
-import FlowchartProperties from './FlowchartProperties.vue'
+import InspectorPanel from './InspectorPanel.vue'
 import FlowchartStarter from './FlowchartStarter.vue'
 import NodeLibraryPanel from './NodeLibraryPanel.vue'
 import AppModal from '../AppModal.vue'
@@ -25,10 +25,10 @@ const emit = defineEmits<{ close: []; saved: [document: FlowchartSummary] }>()
 interface CanvasHandle { add: (kind: FlowNodeKind) => void; startDrag: (kind: FlowNodeKind, event: MouseEvent) => void; updateCell: (cell: FlowNode | FlowEdge) => void; selectId: (id: string) => void; action: (name: 'copy' | 'paste' | 'delete' | 'front' | 'back') => void; fit: () => void; keepSelectedInView: () => void; flush: () => void; exportImage: (kind: 'png' | 'svg', title: string) => Promise<void>; getDiagram: () => FlowchartDiagram }
 const auth = useAuthStore(), notifications = useNotificationStore(), confirmation = useConfirmationStore()
 const ownerKey = auth.workspaceKey ?? '', localId = createClientId(), lifetime = new AbortController()
-const canvas = ref<CanvasHandle>(), properties = ref<InstanceType<typeof FlowchartProperties>>(), titleInput = ref<HTMLInputElement>(), importInput = ref<HTMLInputElement>()
+const canvas = ref<CanvasHandle>(), inspector = ref<InstanceType<typeof InspectorPanel>>(), titleInput = ref<HTMLInputElement>(), importInput = ref<HTMLInputElement>()
 const session = shallowRef<FlowchartSession | null>(null), tick = ref(0), loading = ref(true), loadingError = ref(''), localError = ref(''), localSaved = ref('')
 const editing = ref(!!props.startEditing), showStarter = ref(!props.documentId), smallScreen = ref(window.matchMedia('(max-width: 767px)').matches)
-const showProperties = ref(false), propertiesPinned = ref(false), selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), showExport = ref(false), exporting = ref(false), showShare = ref(false)
+const selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), showExport = ref(false), exporting = ref(false), showShare = ref(false)
 const drafts = ref<LocalFlowchartDraft[]>([]), showHistory = ref(false), revisions = ref<FlowchartRevision[]>([]), revisionPage = ref(0), revisionBusy = ref(false), revisionPreview = shallowRef<FlowchartRevisionDetail | null>(null)
 let storage: ReturnType<typeof createFlowchartDraftStorage> | undefined
 try { storage = createFlowchartDraftStorage() } catch { localError.value = '浏览器不支持本机草稿存储，请及时保存或导出源文件。' }
@@ -44,6 +44,7 @@ const readOnly = computed(() => !editing.value || smallScreen.value)
 function browserStorage(): Storage | undefined { try { return localStorage } catch { return undefined } }
 const nodeLibrary = createNodeLibraryController(ownerKey, () => canvas.value, browserStorage())
 const workbenchPreferences = ref(nodeLibrary.preferences)
+const inspectorOpen = computed(() => !workbenchPreferences.value.inspectorCollapsed)
 function syncWorkbenchPreferences() { workbenchPreferences.value = nodeLibrary.preferences }
 function createShape(kind: FlowNodeKind) {
   nodeLibrary.create(kind)
@@ -54,6 +55,7 @@ function startShapeDrag(kind: FlowNodeKind, event: DragEvent) {
   syncWorkbenchPreferences()
 }
 function toggleNodeLibrary() { nodeLibrary.toggleLibrary(); syncWorkbenchPreferences() }
+function toggleInspector() { nodeLibrary.toggleInspector(); syncWorkbenchPreferences() }
 const starterTemplates: Array<{ kind: 'sequence' | 'decision' | 'architecture'; title: string; description: string; preview: string }> = [
   { kind: 'sequence', title: '顺序流程', description: '适合线性步骤和标准作业。', preview: '开始  →  处理  →  结束' },
   { kind: 'decision', title: '条件分支', description: '从判断点分成两条路径。', preview: '开始  →  判断  ↗\n             ↘' },
@@ -68,7 +70,7 @@ function install(d: FlowchartDraft, saved: FlowchartDocument | null, creationKey
     changed: () => { if (active) tick.value++ },
     saved: document => { if (active) { emit('saved', document); void persist().catch(() => {}) } },
   })
-  selected.value = null; showProperties.value = false; propertiesPinned.value = false; loadingError.value = ''; tick.value++
+  selected.value = null; loadingError.value = ''; tick.value++
 }
 async function startNewDraft(next: FlowchartDraft) {
   if (!active) return
@@ -91,29 +93,21 @@ async function importFile(event: Event) {
   } catch (cause) { notifyError((cause as Error).message) }
 }
 
-function openProperties(pin = false, focusLabel = false) {
+function openProperties(focusLabel = false) {
   if (readOnly.value) return
-  showProperties.value = true
-  if (pin) propertiesPinned.value = true
-  if (focusLabel) void nextTick(() => properties.value?.focusLabel())
-}
-
-function closeProperties() {
-  showProperties.value = false
-  propertiesPinned.value = false
+  if (!inspectorOpen.value) toggleInspector()
+  if (focusLabel) void nextTick(() => inspector.value?.focusLabel())
 }
 
 function toggleProperties() {
-  if (showProperties.value) closeProperties()
-  else openProperties(true)
+  toggleInspector()
 }
 
 function selectionChanged(cell: FlowNode | FlowEdge | null) {
   selected.value = cell
-  if (!cell && !propertiesPinned.value) showProperties.value = false
 }
 
-function editSelected() { openProperties(false, true) }
+function editSelected() { openProperties(true) }
 function record(): LocalFlowchartDraft | null {
   const s = session.value
   if (!s || !ownerKey) return null
@@ -257,7 +251,7 @@ onMounted(async () => {
 })
 function dispose() { if (!active) return; canvas.value?.flush(); void persist().catch(() => {}); active = false; session.value?.dispose(); clearSaveTimers(); clearTimeout(localTimer); lifetime.abort(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('online', online); media.removeEventListener('change', mediaChange); void writes.finally(() => storage?.close()).catch(() => {}) }
 watch(() => auth.workspaceKey, key => { if (key !== ownerKey) dispose() }, { flush: 'sync' })
-watch(showProperties, (open, wasOpen) => {
+watch(inspectorOpen, (open, wasOpen) => {
   if (open && !wasOpen) void nextTick(() => canvas.value?.keepSelectedInView())
 })
 onBeforeRouteLeave(canLeave)
@@ -291,10 +285,8 @@ defineExpose({ canLeave })
     <div v-else-if="loadingError" class="flow-loading" role="alert"><AlertCircle :size="24" />{{ loadingError }}</div>
     <div v-else-if="session" class="flow-body">
       <NodeLibraryPanel v-if="!readOnly" :collapsed="workbenchPreferences.libraryCollapsed" :recent-kinds="workbenchPreferences.recentKinds" @create="createShape" @drag-start="startShapeDrag" @toggle="toggleNodeLibrary" />
-      <FlowchartCanvas :key="String(readOnly)" ref="canvas" class="flow-workspace__canvas" :diagram="draft.diagram" :readonly="readOnly" :viewport-key="`${ownerKey}:${doc?.id || localId}`" :properties-open="showProperties" @change="diagramChanged" @select="selectionChanged" @edit-label="editSelected" @toggle-properties="toggleProperties" @error="notifyError" />
-      <Transition name="flow-properties">
-        <FlowchartProperties v-if="!readOnly && showProperties" id="flow-properties-panel" ref="properties" :selected="selected" :nodes="draft.diagram.nodes" :edges="draft.diagram.edges" @change="canvas?.updateCell($event)" @action="canvas?.action($event)" @select="canvas?.selectId($event)" @close="closeProperties" />
-      </Transition>
+      <FlowchartCanvas :key="String(readOnly)" ref="canvas" class="flow-workspace__canvas" :diagram="draft.diagram" :readonly="readOnly" :viewport-key="`${ownerKey}:${doc?.id || localId}`" :properties-open="inspectorOpen" @change="diagramChanged" @select="selectionChanged" @edit-label="editSelected" @toggle-properties="toggleProperties" @error="notifyError" />
+      <InspectorPanel v-if="!readOnly" ref="inspector" :selected="selected" :nodes="draft.diagram.nodes" :edges="draft.diagram.edges" :collapsed="!inspectorOpen" @change="canvas?.updateCell($event)" @action="canvas?.action($event)" @select="canvas?.selectId($event)" @toggle="toggleInspector" />
     </div>
     <AppModal v-if="showTemplates" title="从模板开始" description="选择常用结构，再根据你的流程调整。" @close="showTemplates = false"><div class="flow-template-list"><button type="button" @click="applyTemplate('sequence')"><Workflow :size="32" /><strong>顺序流程</strong><span>开始 → 处理 → 结束</span></button><button type="button" @click="applyTemplate('decision')"><Diamond :size="32" /><strong>条件分支</strong><span>判断条件，分为两条路径</span></button><button type="button" @click="applyTemplate('architecture')"><Database :size="32" /><strong>系统结构</strong><span>前端 → 后端 → 数据库</span></button></div></AppModal>
     <AppModal v-if="showHistory" title="历史版本" description="自动检查点间隔 5 分钟，手动保存即时生成；保留最近 100 条。" wide @close="showHistory = false"><div v-if="revisionBusy" role="status">正在读取历史…</div><div class="flow-history"><div class="flow-history__list"><button v-for="revision in revisions" :key="revision.id" type="button" :class="{ active: revisionPreview?.id === revision.id }" @click="previewRevision(revision.id)"><strong>{{ revision.title }}</strong><small>{{ new Date(revision.createdAt).toLocaleString() }} · v{{ revision.documentVersion }}</small></button><p v-if="!revisions.length">暂无历史版本。</p><div class="flow-history__pages"><button type="button" :disabled="revisionPage === 0 || revisionBusy" @click="history(revisionPage - 1)">上一页</button><span>{{ revisionPage + 1 }}</span><button type="button" :disabled="revisions.length < 20 || revisionBusy" @click="history(revisionPage + 1)">下一页</button></div></div><div v-if="revisionPreview" class="flow-history__preview"><FlowchartCanvas :key="revisionPreview.id" :diagram="revisionPreview.diagram" readonly /><button type="button" class="button button-primary" :disabled="revisionBusy" @click="restoreRevision">恢复此版本</button></div></div></AppModal>
@@ -310,8 +302,6 @@ defineExpose({ canLeave })
 :global(:root:not([data-theme='light'])) .flow-workspace { --flow-bg: #151a23; --flow-surface: #1d2430; --flow-surface-alt: #202936; --flow-border: #303b4b; --flow-border-strong: #465468; --flow-text: #edf2fb; --flow-muted: #9aa8ba; --flow-accent: #70a4ff; --flow-accent-soft: #243a5e; box-shadow: 0 8px 28px rgba(0, 0, 0, .24); }
 .flow-header { display: flex; align-items: center; gap: 10px; min-height: 58px; flex: 0 0 auto; padding: 10px 14px; border-bottom: 1px solid var(--flow-border); background: var(--flow-surface); }.flow-back { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 0; background: transparent; color: var(--flow-muted); border-radius: 6px; cursor: pointer; transition: color .15s ease, background .15s ease; }.flow-back:hover { color: var(--flow-text); background: var(--flow-surface-alt); }.flow-back:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 2px; }.flow-header__icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--flow-accent); width: 34px; height: 34px; border-radius: 7px; background: var(--flow-accent-soft); }.flow-header__title { flex: 1 1 auto; min-width: 0; overflow: hidden; }.flow-header__title input,.flow-header__title h1 { display: block; width: 100%; margin: 0; padding: 0; overflow: hidden; border: 0; background: transparent; color: var(--flow-text); font: 600 15px/1.5 inherit; text-overflow: ellipsis; white-space: nowrap; }.flow-header__title input:focus { outline: none; }.flow-header__title span { display: flex; align-items: center; gap: 4px; max-width: 100%; margin-top: 2px; overflow: hidden; font-size: 11px; color: var(--flow-muted); text-overflow: ellipsis; white-space: nowrap; }.flow-header__actions { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; max-width: 100%; gap: 3px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }.flow-header__actions::-webkit-scrollbar { display: none; }.flow-header__actions .button { min-height: 32px; flex: 0 0 auto; padding: 6px 9px; color: var(--flow-muted); border-radius: 6px; font-size: 12px; }.flow-header__actions .button:hover { color: var(--flow-text); background: var(--flow-surface-alt); }.flow-header__actions .button:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 1px; }.flow-header__actions .button-primary { color: #fff; background: var(--flow-accent); }.flow-meta { display: flex; align-items: center; flex: 0 0 auto; flex-wrap: wrap; gap: 12px; min-height: 34px; padding: 6px 14px; overflow: hidden; font-size: 11px; color: var(--flow-muted); border-bottom: 1px solid var(--flow-border); background: var(--flow-surface); }.flow-meta label { display: flex; align-items: center; flex: 0 0 auto; gap: 7px; }.flow-meta select { max-width: 180px; min-width: 0; border: 0; color: var(--flow-text); font: inherit; background: transparent; }.flow-meta > span { flex: 0 0 auto; white-space: nowrap; }.flow-meta button { display: flex; gap: 5px; align-items: center; flex: 0 0 auto; border: 0; font: inherit; color: var(--flow-muted); background: transparent; cursor: pointer; }.flow-meta button.active { color: var(--flow-accent); }.flow-meta small { max-width: 35%; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-body { position: relative; display: flex; flex: 1 1 auto; height: auto; min-height: 0; min-width: 0; overflow: hidden; }.flow-workspace__canvas { flex: 1 1 auto; min-width: 0; min-height: 0; }.flow-palette { width: 176px; flex: 0 0 176px; min-height: 0; padding: 16px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-right: 1px solid var(--flow-border); background: var(--flow-surface); }.flow-palette h2 { font-size: 12px; margin: 0 0 4px; color: var(--flow-text); }.flow-palette p { font-size: 10px; color: var(--flow-muted); margin: 0 0 14px; }.flow-palette button { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; gap: 6px; min-height: 62px; padding: 9px 6px; margin-bottom: 7px; border: 1px solid var(--flow-border); border-radius: 7px; background: var(--flow-surface); color: var(--flow-muted); cursor: grab; font-size: 11px; transition: border-color .15s ease, color .15s ease, background .15s ease, box-shadow .15s ease; }.flow-palette button:hover { color: var(--flow-accent); border-color: #8bbcff; background: var(--flow-accent-soft); box-shadow: 0 2px 8px rgba(22,119,255,.12); }.flow-palette button:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 2px; }.flow-palette small { display: block; font-size: 10px; line-height: 1.8; color: var(--flow-muted); padding-top: 7px; }.flow-palette .flow-palette__add { flex-direction: row; min-height: 36px; font-size: 10px; cursor: pointer; }
-.flow-properties-enter-active, .flow-properties-leave-active { overflow: hidden; transition: opacity .18s ease, transform .18s ease, width .22s ease, flex-basis .22s ease, padding .22s ease, border-color .22s ease; }
-.flow-properties-enter-from, .flow-properties-leave-to { width: 0 !important; flex-basis: 0 !important; padding-right: 0 !important; padding-left: 0 !important; border-left-color: transparent !important; opacity: 0; transform: translateX(12px); }
 .flow-export { position: relative; }.flow-export__menu { position: absolute; top: calc(100% + 6px); right: 0; width: 160px; padding: 5px; z-index: 10; border: 1px solid var(--flow-border); border-radius: 7px; box-shadow: 0 8px 22px rgba(32,55,88,.16); background: var(--flow-surface); }.flow-export__menu button { width: 100%; padding: 9px; display: flex; gap: 6px; border: 0; background: transparent; color: var(--flow-text); text-align: left; font-size: 12px; cursor: pointer; border-radius: 4px; }.flow-export__menu button:hover { background: var(--flow-accent-soft); }
 .flow-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 18px; font-size: 12px; color: var(--flow-text); background: var(--flow-surface-alt); border-bottom: 1px solid var(--flow-border); }.warning { color: var(--danger) !important; }.flow-notice span { flex: 1; }.flow-notice small { display: block; margin-top: 5px; }.flow-notice button,.flow-drafts button { background: var(--flow-surface); border: 1px solid var(--flow-border); border-radius: 5px; padding: 6px 9px; color: var(--flow-text); cursor: pointer; font: inherit; }
 .flow-drafts { padding: 12px 18px; font-size: 12px; background: var(--flow-accent-soft); }.flow-drafts strong { display: flex; gap: 6px; align-items: center; color: var(--flow-accent); }.flow-drafts>div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 9px; }.flow-drafts span { flex: 1; min-width: 160px; color: var(--flow-text); }.flow-loading { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--flow-muted); }
@@ -335,9 +325,6 @@ defineExpose({ canLeave })
 .flow-history__preview { min-height: 360px; }
 .flow-history__preview :deep(.flow-canvas) { min-height: 360px; height: 360px; }
 :global(.writing-mode) .flow-workspace { border: 0; border-radius: 0; box-shadow: none; }
-@media (prefers-reduced-motion: reduce) {
-  .flow-properties-enter-active, .flow-properties-leave-active { transition-duration: 0.01ms; }
-}
 .flow-header__actions .button span { white-space: nowrap; }
 .flow-header__actions { overflow: visible; }
 @media (min-width: 768px) and (max-width: 900px) {

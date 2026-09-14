@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FLOWCHART_SHAPES, filterFlowchartShapes, type FlowchartShapeCategory, classifyCanvasWheel, normalizeCanvasWheelDelta, shouldOpenProperties } from '../src/utils/flowchartEditor.ts'
+import { FLOWCHART_SHAPES, filterFlowchartShapes, type FlowchartShapeCategory, classifyCanvasWheel, normalizeCanvasWheelDelta, runCanvasExportCycle, shouldOpenProperties } from '../src/utils/flowchartEditor.ts'
 import {
   createEdgeDragSnapshot,
   describeOrthogonalSegments,
@@ -29,6 +29,18 @@ test('only explicit edit gestures open the properties panel', () => {
   assert.equal(shouldOpenProperties('single'), false)
   assert.equal(shouldOpenProperties('double'), true)
   assert.equal(shouldOpenProperties('context'), true)
+})
+
+test('canvas export overlay cycle restores the mounted minimap after a failed export', async () => {
+  const hiddenStates: boolean[] = []
+  await assert.rejects(
+    runCanvasExportCycle(hidden => hiddenStates.push(hidden), async () => {
+      assert.equal(hiddenStates.at(-1), true)
+      throw new Error('export failed')
+    }),
+    /export failed/,
+  )
+  assert.deepEqual(hiddenStates, [true, false])
 })
 
 test('shape palette groups all supported shapes into ProcessOn-style categories', () => {

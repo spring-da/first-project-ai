@@ -6,7 +6,7 @@ import { Minus, Plus, Scan, Map, Grid2X2, MousePointer2, Hand, Undo2, Redo2, Cop
 import type { FlowchartDiagram, FlowNodeKind, FlowNode, FlowEdge } from '../../types/flowcharts'
 import { nodeToCell, edgeToCell, graphDiagram } from '../../utils/flowchartAdapter'
 import { makeNode, makeEdge, validateDiagram, downloadBlob, flowchartFingerprint } from '../../utils/flowcharts'
-import { classifyCanvasWheel, normalizeCanvasWheelDelta } from '../../utils/flowchartEditor'
+import { classifyCanvasWheel, normalizeCanvasWheelDelta, runCanvasExportCycle } from '../../utils/flowchartEditor'
 import { readNativeFlowNodeKind, replaceFlowchartSelection } from '../../utils/flowchartEditorState'
 import { describeOrthogonalSegments, ensureEditableOrthogonalRoute, insertOrthogonalVertex, moveOrthogonalSegment, moveOrthogonalVertex, normalizeOrthogonalPoints, removeOrthogonalVertex, createEdgeDragSnapshot, restoreEdgeDragSnapshot, type EdgePoint, type OrthogonalSegment } from '../../utils/flowchartEdgeEditor'
 
@@ -439,14 +439,14 @@ function saveViewport() {
 }
 async function exportImage(format: 'png' | 'svg', title: string) {
   if (!graph) return
+  const exportGraph = graph
   flush(); validateDiagram(graphDiagram(graph))
-  // The graph remains mounted; only editor chrome is removed for a clean,
-  // document-only export. Waiting for Vue ensures conditional overlays have
-  // left the DOM before X6 serializes its SVG.
-  exportingOverlay.value = true
-  await nextTick()
-  try {
-    graph.getCells().forEach(cell => graph!.findViewByCell(cell)?.hideTools()); transform?.clearWidgets()
+  return runCanvasExportCycle(hidden => { exportingOverlay.value = hidden }, async () => {
+    // The graph and MiniMap container remain mounted. Only editor chrome is
+    // hidden before X6 serializes its SVG, so a completed export cannot sever
+    // the MiniMap's original X6 DOM binding.
+    await nextTick()
+    exportGraph.getCells().forEach(cell => exportGraph.findViewByCell(cell)?.hideTools()); transform?.clearWidgets()
     const options = { preserveDimensions: true, copyStyles: false, serializeImages: false, beforeSerialize(svg: SVGSVGElement) {
       svg.querySelectorAll('.x6-port, .x6-cell-tools, .x6-edge-tools').forEach(el => el.remove())
       svg.style.background = '#ffffff'
@@ -454,13 +454,15 @@ async function exportImage(format: 'png' | 'svg', title: string) {
       const box = svg.getAttribute('viewBox')?.split(/\s+/).map(Number)
       background.setAttribute('x', String(box?.[0] ?? 0)); background.setAttribute('y', String(box?.[1] ?? 0)); background.setAttribute('width', String(box?.[2] ?? '100%')); background.setAttribute('height', String(box?.[3] ?? '100%')); background.setAttribute('fill', '#ffffff'); svg.insertBefore(background, svg.firstChild)
     } }
-    if (format === 'svg') downloadBlob(new Blob([await graph.toSVGAsync(options)], { type: 'image/svg+xml' }), `${title}.svg`)
-    else {
-      const data = await graph.toPNGAsync({ ...options, backgroundColor: '#ffffff', padding: 24, ratio: 2 })
-      const bytes = Uint8Array.from(atob(data.split(',')[1]!), c => c.charCodeAt(0))
-      downloadBlob(new Blob([bytes], { type: 'image/png' }), `${title}.png`)
-    }
-  } finally { exportingOverlay.value = false; graph.getCells().forEach(cell => graph!.findViewByCell(cell)?.showTools()) }
+    try {
+      if (format === 'svg') downloadBlob(new Blob([await exportGraph.toSVGAsync(options)], { type: 'image/svg+xml' }), `${title}.svg`)
+      else {
+        const data = await exportGraph.toPNGAsync({ ...options, backgroundColor: '#ffffff', padding: 24, ratio: 2 })
+        const bytes = Uint8Array.from(atob(data.split(',')[1]!), c => c.charCodeAt(0))
+        downloadBlob(new Blob([bytes], { type: 'image/png' }), `${title}.png`)
+      }
+    } finally { exportGraph.getCells().forEach(cell => exportGraph.findViewByCell(cell)?.showTools()) }
+  })
 }
 onMounted(() => {
   if (!host.value) return
@@ -563,7 +565,7 @@ defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, ke
       </svg>
       <button v-for="handle in edgeEditor.handles" :key="handle.id" type="button" class="flow-edge-editor__handle" :class="[`is-${handle.kind}`, handle.axis ? `axis-${handle.axis}` : '']" :aria-label="handle.label" :title="handle.label" :data-handle-index="handle.index" :data-handle-kind="handle.kind" :style="{ left: `${handle.x}px`, top: `${handle.y}px`, width: `${handle.width}px`, height: `${handle.height}px`, transform: `translate(-50%, -50%) rotate(${handle.angle}deg)` }" @pointerdown="beginEdgeHandleDrag(handle, $event)" @dblclick="removeEdgeVertex(handle, $event)"><span aria-hidden="true"></span></button>
     </div>
-    <div v-if="!exportingOverlay" v-show="showMini" ref="mini" class="flow-canvas__mini" aria-label="画布小地图"></div>
+    <div v-show="showMini && !exportingOverlay" ref="mini" class="flow-canvas__mini" aria-label="画布小地图"></div>
     <span v-if="!exportingOverlay" class="flow-canvas__hint">{{ readonly ? '滚轮平移 · Ctrl + 滚轮缩放' : edgeEditor ? '点击线段插入拐点 · 双击拐点删除 · 拖动线段调整 · Esc 取消' : '拖动连接点连线 · 滚轮平移 · Ctrl + 滚轮缩放 · Shift 框选' }}</span>
   </div>
 </template>

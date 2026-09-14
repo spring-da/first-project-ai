@@ -60,11 +60,15 @@ test('canvas keeps document actions out of the viewport toolbar', () => {
 })
 
 test('image export hides workbench overlays and restores them', () => {
-  assert.match(canvasSource, /exportingOverlay\.value = true/)
-  assert.match(canvasSource, /finally \{ exportingOverlay\.value = false/)
+  assert.match(canvasSource, /runCanvasExportCycle/)
   for (const overlay of ['flow-canvas__tools', 'flow-canvas__context', 'flow-canvas__edge-editor', 'flow-canvas__mini', 'flow-canvas__hint']) {
     assert.match(canvasSource, new RegExp(`v-(?:if|show)="[^\"]*!exportingOverlay[^\"]*"[^>]*class="${overlay}"|class="${overlay}"[^>]*v-(?:if|show)="[^\"]*!exportingOverlay`, 's'))
   }
+})
+
+test('the minimap stays mounted while export temporarily hides it', () => {
+  assert.match(canvasSource, /v-show="showMini && !exportingOverlay"\s+ref="mini"\s+class="flow-canvas__mini"/)
+  assert.doesNotMatch(canvasSource, /v-if="[^\"]*exportingOverlay[^\"]*"[^>]*ref="mini"/)
 })
 
 test('panel collapse state schedules a selected-cell viewport recompute', () => {

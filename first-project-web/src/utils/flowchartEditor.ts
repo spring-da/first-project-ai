@@ -34,6 +34,16 @@ export function shouldOpenProperties(trigger: PropertyEditTrigger): boolean {
   return trigger === 'double' || trigger === 'context'
 }
 
+/**
+ * Keep export-only UI transitions deterministic: editor overlays disappear
+ * before serialization and are restored even when an encoder rejects.
+ */
+export async function runCanvasExportCycle<T>(setOverlayHidden: (hidden: boolean) => void, exportGraph: () => Promise<T>): Promise<T> {
+  setOverlayHidden(true)
+  try { return await exportGraph() }
+  finally { setOverlayHidden(false) }
+}
+
 export const FLOWCHART_SHAPES: FlowchartShapeItem[] = [
   { kind: 'terminal', label: '开始 / 结束', category: 'flow', hint: '流程起止节点' },
   { kind: 'rectangle', label: '处理步骤', category: 'flow', hint: '执行一个动作' },

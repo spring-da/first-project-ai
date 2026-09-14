@@ -13,7 +13,7 @@ import { createFlowchartDraftStorage } from '../../utils/flowchartDrafts'
 import type { LocalFlowchartDraft } from '../../utils/flowchartDrafts'
 import { createClientId } from '../../utils/clientId'
 import { copyDraft, emptyDiagram, createTemplate, exportFlowchartSource, downloadBlob, importFlowchartSource, validateDiagram } from '../../utils/flowcharts'
-import { defaultWorkbenchPreferences, rememberRecentShape, parseWorkbenchPreferences, toggleWorkbenchPanel, type FlowchartWorkbenchPreferences } from '../../utils/flowchartEditorState'
+import { createNodeLibraryController } from '../../utils/flowchartEditorState'
 import FlowchartProperties from './FlowchartProperties.vue'
 import FlowchartStarter from './FlowchartStarter.vue'
 import NodeLibraryPanel from './NodeLibraryPanel.vue'
@@ -41,24 +41,19 @@ const status = computed(() => { void tick.value; return session.value?.status ??
 const error = computed(() => { void tick.value; return session.value?.error ?? '' })
 const doc = computed(() => { void tick.value; return session.value?.document })
 const readOnly = computed(() => !editing.value || smallScreen.value)
-const workbenchStorageKey = `devnest-flowchart-workbench:${ownerKey}`
-function readWorkbenchPreferences(): FlowchartWorkbenchPreferences {
-  try { return parseWorkbenchPreferences(localStorage.getItem(workbenchStorageKey)) } catch { return defaultWorkbenchPreferences() }
-}
-const workbenchPreferences = ref(readWorkbenchPreferences())
-function saveWorkbenchPreferences(next: FlowchartWorkbenchPreferences) {
-  workbenchPreferences.value = next
-  try { localStorage.setItem(workbenchStorageKey, JSON.stringify(next)) } catch { /* Panel preferences are optional. */ }
-}
+function browserStorage(): Storage | undefined { try { return localStorage } catch { return undefined } }
+const nodeLibrary = createNodeLibraryController(ownerKey, () => canvas.value, browserStorage())
+const workbenchPreferences = ref(nodeLibrary.preferences)
+function syncWorkbenchPreferences() { workbenchPreferences.value = nodeLibrary.preferences }
 function createShape(kind: FlowNodeKind) {
-  saveWorkbenchPreferences(rememberRecentShape(workbenchPreferences.value, kind))
-  canvas.value?.add(kind)
+  nodeLibrary.create(kind)
+  syncWorkbenchPreferences()
 }
 function startShapeDrag(kind: FlowNodeKind, event: DragEvent) {
-  saveWorkbenchPreferences(rememberRecentShape(workbenchPreferences.value, kind))
-  canvas.value?.startDrag(kind, event)
+  nodeLibrary.dragStart(kind, event)
+  syncWorkbenchPreferences()
 }
-function toggleNodeLibrary() { saveWorkbenchPreferences(toggleWorkbenchPanel(workbenchPreferences.value, 'library')) }
+function toggleNodeLibrary() { nodeLibrary.toggleLibrary(); syncWorkbenchPreferences() }
 const starterTemplates: Array<{ kind: 'sequence' | 'decision' | 'architecture'; title: string; description: string; preview: string }> = [
   { kind: 'sequence', title: '顺序流程', description: '适合线性步骤和标准作业。', preview: '开始  →  处理  →  结束' },
   { kind: 'decision', title: '条件分支', description: '从判断点分成两条路径。', preview: '开始  →  判断  ↗\n             ↘' },

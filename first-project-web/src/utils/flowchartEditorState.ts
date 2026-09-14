@@ -9,6 +9,20 @@ export interface FlowchartWorkbenchPreferences {
   recentKinds: FlowNodeKind[]
 }
 
+export const FLOW_NODE_DRAG_TYPE = 'application/x-devnest-flow-node'
+
+export interface NodeLibraryCanvas {
+  add: (kind: FlowNodeKind) => void
+}
+
+export interface NodeLibraryController {
+  readonly key: string
+  readonly preferences: FlowchartWorkbenchPreferences
+  create: (kind: FlowNodeKind) => void
+  dragStart: (kind: FlowNodeKind, event: DragEvent) => void
+  toggleLibrary: () => void
+}
+
 export function defaultWorkbenchPreferences(): FlowchartWorkbenchPreferences {
   return { libraryCollapsed: false, inspectorCollapsed: false, recentKinds: [] }
 }
@@ -42,5 +56,26 @@ export function parseWorkbenchPreferences(value: unknown): FlowchartWorkbenchPre
     libraryCollapsed: typeof candidate.libraryCollapsed === 'boolean' ? candidate.libraryCollapsed : false,
     inspectorCollapsed: typeof candidate.inspectorCollapsed === 'boolean' ? candidate.inspectorCollapsed : false,
     recentKinds: Array.isArray(candidate.recentKinds) ? visibleRecentKinds(candidate.recentKinds) : [],
+  }
+}
+
+export function readNativeFlowNodeKind(transfer: Pick<DataTransfer, 'getData'> | null): FlowNodeKind | null {
+  const kind = transfer?.getData(FLOW_NODE_DRAG_TYPE)
+  return isFlowchartShapeKind(kind) ? kind : null
+}
+
+/** Keep node-library state local to one user/workspace and degrade gracefully without browser storage. */
+export function createNodeLibraryController(ownerKey: string, canvas: () => NodeLibraryCanvas | undefined, storage?: Pick<Storage, 'getItem' | 'setItem'>): NodeLibraryController {
+  const key = `devnest-flowchart-workbench:${ownerKey}`
+  let preferences: FlowchartWorkbenchPreferences
+  try { preferences = parseWorkbenchPreferences(storage?.getItem(key)) } catch { preferences = defaultWorkbenchPreferences() }
+  const persist = () => { try { storage?.setItem(key, JSON.stringify(preferences)) } catch { /* Preferences are optional. */ } }
+  const update = (next: FlowchartWorkbenchPreferences) => { preferences = next; persist() }
+  return {
+    key,
+    get preferences() { return preferences },
+    create(kind) { update(rememberRecentShape(preferences, kind)); canvas()?.add(kind) },
+    dragStart(kind, event) { void event; update(rememberRecentShape(preferences, kind)) },
+    toggleLibrary() { update(toggleWorkbenchPanel(preferences, 'library')) },
   }
 }

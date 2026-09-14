@@ -7,6 +7,7 @@ import type { FlowchartDiagram, FlowNodeKind, FlowNode, FlowEdge } from '../../t
 import { nodeToCell, edgeToCell, graphDiagram } from '../../utils/flowchartAdapter'
 import { makeNode, makeEdge, validateDiagram, downloadBlob, flowchartFingerprint } from '../../utils/flowcharts'
 import { classifyCanvasWheel, normalizeCanvasWheelDelta } from '../../utils/flowchartEditor'
+import { readNativeFlowNodeKind } from '../../utils/flowchartEditorState'
 import { describeOrthogonalSegments, ensureEditableOrthogonalRoute, insertOrthogonalVertex, moveOrthogonalSegment, moveOrthogonalVertex, normalizeOrthogonalPoints, removeOrthogonalVertex, createEdgeDragSnapshot, restoreEdgeDragSnapshot, type EdgePoint, type OrthogonalSegment } from '../../utils/flowchartEdgeEditor'
 
 const props = withDefaults(defineProps<{ diagram: FlowchartDiagram; readonly?: boolean; viewportKey?: string; propertiesOpen?: boolean }>(), { readonly: false })
@@ -358,6 +359,17 @@ function startDrag(kind: FlowNodeKind, event: MouseEvent) {
   cancelPendingDrag = cancel
   document.addEventListener('mousemove', move); document.addEventListener('mouseup', cancel, { once: true })
 }
+function allowNativeNodeDrop(event: DragEvent) {
+  if (readNativeFlowNodeKind(event.dataTransfer)) event.preventDefault()
+}
+function dropNativeNode(event: DragEvent) {
+  const kind = readNativeFlowNodeKind(event.dataTransfer)
+  if (!kind || !graph || props.readonly || graph.getNodes().length >= 1000) return
+  event.preventDefault()
+  const point = graph.clientToLocal(event.clientX, event.clientY)
+  const node = graph.addNode(nodeToCell(makeNode(kind, point.x - 80, point.y - 32)))
+  graph.resetSelection([node]); select(node); flush()
+}
 function updateCell(value: FlowNode | FlowEdge) {
   const cell = graph?.getCellById(value.id)
   if (!cell || props.readonly) return
@@ -518,7 +530,7 @@ defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, ke
       <button type="button" title="置于底层" aria-label="置于底层" @click="action('back')"><ArrowDownToLine :size="15" /></button>
       <button type="button" class="danger" title="删除" aria-label="删除选中图形" @click="action('delete')"><Trash2 :size="15" /></button>
     </div>
-    <div ref="host" class="flow-canvas__surface" @mousedown="root?.focus({ preventScroll: true })"></div>
+    <div ref="host" class="flow-canvas__surface" @mousedown="root?.focus({ preventScroll: true })" @dragover="allowNativeNodeDrop" @drop="dropNativeNode"></div>
     <div v-if="cellCount === 0 && !readonly" class="flow-canvas__empty" aria-label="空白画布提示">
       <div class="flow-canvas__empty-card">
         <span class="flow-canvas__empty-icon" aria-hidden="true"><Plus :size="19" /></span>

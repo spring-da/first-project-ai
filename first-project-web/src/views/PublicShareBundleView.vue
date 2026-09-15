@@ -338,6 +338,12 @@ onBeforeUnmount(() => {
 .bundle-skeleton span { height: 10px; border-radius: 5px; background: var(--surface-raised); }
 .bundle-skeleton span:nth-child(2) { width: 84%; }.bundle-skeleton span:nth-child(3) { width: 60%; }
 .bundle-footer { padding: 0 20px 28px; color: var(--muted); font-size: 12px; line-height: 1.7; text-align: center; }
+@media (min-width: 801px) {
+  .bundle-directory { position: sticky; top: 20px; display: flex; flex-direction: column; max-height: calc(100dvh - 112px); }
+  .bundle-directory > :not(nav) { flex-shrink: 0; }
+  .bundle-directory > nav { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .bundle-items { max-height: none; overflow: visible; }
+}
 @media (max-width: 800px) {
   .bundle-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .bundle-directory { padding: 18px 14px 12px; }

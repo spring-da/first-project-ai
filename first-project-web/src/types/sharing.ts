@@ -36,8 +36,10 @@ export interface ShareBundleSummary {
   revokedAt: string | null
   active: boolean
   itemCount: number
+  tokenAvailable: boolean
 }
 export interface ShareBundleSecret { id: string; token: string; title: string; expiresAt: string; createdAt: string }
+export interface ShareBundleToken { token: string; regenerated: boolean }
 export interface ShareBundleItem {
   id: string
   resourceType: ShareResourceType

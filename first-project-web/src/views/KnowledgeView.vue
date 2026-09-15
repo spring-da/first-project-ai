@@ -66,6 +66,7 @@ const flowchartSearch = useFlowchartSearch(search)
 const typeFilter = ref<KnowledgeTypeFilter>('all')
 const favoriteOnly = ref(false)
 const selectedDomain = ref(ALL_DOMAINS)
+const knowledgeListView = ref<HTMLDivElement | null>(null)
 const currentPage = ref(1)
 const pageSize = ref<number>(24)
 const itemView = ref<KnowledgeItemView>('list')
@@ -763,6 +764,9 @@ async function locateKnowledgeItem(id: string) {
 }
 
 watch([search, favoriteOnly, selectedDomain, typeFilter, pageSize], () => currentPage.value = 1)
+watch([currentPage, pageSize, search, favoriteOnly, selectedDomain, typeFilter], () => {
+  knowledgeListView.value?.querySelector('.unified-table')?.scrollTo({ top: 0 })
+}, { flush: 'post' })
 watch(totalPages, (value) => { if (currentPage.value > value) currentPage.value = value })
 watch(() => route.query, async (query) => {
   const requestedType = query.type ?? query.tab
@@ -870,7 +874,7 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
           </form>
 
 
-          <div v-else class="knowledge-list-view">
+          <div v-else ref="knowledgeListView" class="knowledge-list-view">
             <div class="module-state-stack">
               <WorkspaceModuleState module="markdownDocuments" title="文章" :has-data="Boolean(workspace.markdownDocuments.length)" compact />
               <WorkspaceModuleState module="snippets" title="代码片段" :has-data="Boolean(workspace.snippets.length)" compact />
@@ -954,8 +958,10 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
             <EmptyState v-else-if="!workspace.loading && !flowchartSearch.loading.value && !flowchartSearch.error.value" :title="totalKnowledgeItems ? '没有匹配的知识' : '开始建立你的个人知识库'" :description="totalKnowledgeItems ? '试试切换目录、内容类型，或清除搜索与收藏筛选。' : '文章、代码片段和流程图会出现在同一个列表中，需要时再按类型筛选。'">
               <div class="empty-actions"><button class="button button-primary" type="button" @click="openCreate('documents')"><FileText :size="16" />写文章</button><button class="button button-secondary" type="button" @click="openCreate('snippets')"><Code2 :size="16" />存代码</button><button class="button button-secondary" type="button" @click="openCreate('flowcharts')"><Workflow :size="16" />画流程图</button></div>
             </EmptyState>
-            <p v-if="pageItems.length" class="drop-hint"><Upload :size="14" />可拖入 Markdown、ZIP 或 .flowchart.json；在当前目录导入，位于“全部知识”时归入未分类</p>
-            <nav v-if="filteredKnowledgeItems.length > pageSize" class="pagination" aria-label="分页"><span>第 {{ currentPage }} / {{ totalPages }} 页 · 共 {{ filteredKnowledgeItems.length }} 条</span><div><button type="button" :disabled="currentPage === 1" aria-label="上一页" @click="currentPage--"><ArrowLeft :size="16" /></button><button v-for="page in pageNumbers" :key="page" type="button" :class="{ active: currentPage === page }" @click="currentPage = page">{{ page }}</button><button type="button" :disabled="currentPage === totalPages" aria-label="下一页" @click="currentPage++"><ArrowRight :size="16" /></button></div></nav>
+            <footer v-if="pageItems.length" class="knowledge-list-footer">
+              <p class="drop-hint"><Upload :size="14" />可拖入 Markdown、ZIP 或 .flowchart.json；在当前目录导入，位于“全部知识”时归入未分类</p>
+              <nav v-if="filteredKnowledgeItems.length > pageSize" class="pagination" aria-label="分页"><span>第 {{ currentPage }} / {{ totalPages }} 页 · 共 {{ filteredKnowledgeItems.length }} 条</span><div><button type="button" :disabled="currentPage === 1" aria-label="上一页" @click="currentPage--"><ArrowLeft :size="16" /></button><button v-for="page in pageNumbers" :key="page" type="button" :class="{ active: currentPage === page }" @click="currentPage = page">{{ page }}</button><button type="button" :disabled="currentPage === totalPages" aria-label="下一页" @click="currentPage++"><ArrowRight :size="16" /></button></div></nav>
+            </footer>
           </div>
         </div>
         </Transition>
@@ -1405,6 +1411,9 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
 .selection-cancel-button { color: var(--muted); border: 1px solid transparent; background: transparent; }
 .selection-cancel-button:hover { color: var(--text); background: var(--surface-sunken); }
 .drop-hint { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 14px 0 0; color: var(--muted); font-size: var(--font-2xs); }
+.knowledge-list-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 18px; min-width: 0; min-height: 42px; margin-top: 8px; }
+.knowledge-list-footer .drop-hint { flex: 1 1 320px; min-width: 0; justify-content: flex-start; margin: 0; line-height: 1.5; }
+.knowledge-list-footer .pagination { flex: 0 0 auto; margin: 0 0 0 auto; }
 .empty-actions { display: flex; gap: 8px; }
 
 @media (max-width: 1220px) {
@@ -1464,6 +1473,7 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
   .unified-row .type-cell, .unified-row .domain-badge { grid-column: 2 / -1; }
   .unified-row > time { grid-column: 2 / -1; grid-row: auto; }
   .pagination { align-items: flex-start; flex-direction: column; }
+  .knowledge-list-footer .pagination { width: 100%; align-items: center; flex-direction: row; flex-wrap: wrap; gap: 8px; margin-left: 0; }
   .empty-actions { align-items: stretch; flex-direction: column; }
 }
 /* 语言彩色徽标与 JSON 工具 */
@@ -1536,5 +1546,21 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
   .trash-row { grid-template-columns: 32px minmax(0, 1fr); }
   .trash-row__actions { grid-column: 2; justify-content: flex-start; }
   .domain-delete__option select { grid-column: 1 / -1; }
+}
+
+/* Bound the list; the overview, filters and pagination remain visible. */
+.unified-table { max-height: 60dvh; overflow: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+.unified-table__head { position: sticky; top: 0; z-index: 2; }
+@media (min-width: 721px) {
+  .knowledge-page:not(.writing-mode) { display: flex; flex: 1; min-height: 0; }
+  .knowledge-page:not(.writing-mode) .knowledge-workspace,
+  .knowledge-page:not(.writing-mode) .knowledge-results,
+  .knowledge-page:not(.writing-mode) .knowledge-content,
+  .knowledge-page:not(.writing-mode) .knowledge-results__inner,
+  .knowledge-page:not(.writing-mode) .knowledge-list-view {
+    display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0;
+  }
+  .knowledge-list-view > :not(.unified-table), .knowledge-header { flex-shrink: 0; }
+  .unified-table { flex: 1; min-height: 0; max-height: none; }
 }
 </style>

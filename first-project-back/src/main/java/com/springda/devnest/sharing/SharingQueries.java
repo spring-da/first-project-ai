@@ -85,7 +85,8 @@ public class SharingQueries {
     private SharingDtos.LinkSummary summary(ResultSet r) throws SQLException {
         var expires = instant(r, "expires_at"); var revoked = instant(r, "revoked_at"); int count = r.getInt("item_count");
         return new SharingDtos.LinkSummary(r.getString("id"), r.getString("title"), expires, instant(r, "created_at"), revoked,
-                r.getBoolean("enabled") && revoked == null && expires.isAfter(Instant.now()) && count > 0, count);
+                r.getBoolean("enabled") && revoked == null && expires.isAfter(Instant.now()) && count > 0, count,
+                r.getString("token_ciphertext") != null && !r.getString("token_ciphertext").isBlank());
     }
     private MapSqlParameterSource params(String owner, int page, int size, String q) {
         String search = q.toLowerCase(Locale.ROOT).replace("!", "!!").replace("%", "!%").replace("_", "!_");

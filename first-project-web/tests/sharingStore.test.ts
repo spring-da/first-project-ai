@@ -21,7 +21,7 @@ let store: ReturnType<typeof useSharingStore>
 let auth: ReturnType<typeof useAuthStore>
 const poolEntry = (id: string, mine = true) => ({ id, resourceType: 'MARKDOWN', title: `Note ${id}`, excerpt: 'Saved text', authorName: 'Owner', sharedAt: '2026-09-09T00:00:00Z', updatedAt: '2026-09-09T00:00:00Z', mine })
 const poolPage = (id: string, mine = true) => ({ items: [poolEntry(id, mine)], total: 1, page: 0, size: 20 })
-const link = { id: 'link', title: 'Collection', expiresAt: '2026-09-16T00:00:00Z', createdAt: '2026-09-09T00:00:00Z', revokedAt: null, active: true, itemCount: 1 }
+const link = { id: 'link', title: 'Collection', expiresAt: '2026-09-16T00:00:00Z', createdAt: '2026-09-09T00:00:00Z', revokedAt: null, active: true, itemCount: 1, tokenAvailable: true }
 const item = { id: 'item', resourceId: 'note', resourceType: 'MARKDOWN', title: 'Note', removedAt: null, available: true }
 const content = { id: 'note', resourceType: 'MARKDOWN', title: 'Note', content: 'Sensitive saved text', language: null, category: null, tags: [], updatedAt: '2026-09-09T00:00:00Z' }
 
@@ -155,4 +155,45 @@ test('removing a bundle item refreshes its availability and the link summary', a
   assert.equal(await store.removeItem('link', 'item'), true)
   assert.equal(store.bundleDetail?.items[0]?.available, false)
   assert.equal(store.links.items[0]?.itemCount, 0)
+})
+
+test('retrieving a legacy link token marks it reusable without storing the token in the list', async (context) => {
+  const legacyLink = { ...link, tokenAvailable: false }
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (options.method === 'POST' && String(url).endsWith('/token')) return Response.json({ token: 'n'.repeat(43), regenerated: true })
+    return Response.json({ items: [legacyLink], total: 1, page: 0, size: 20 })
+  })
+  await store.loadLinks({})
+  assert.deepEqual(await store.getLinkToken('link'), { token: 'n'.repeat(43), regenerated: true })
+  assert.equal(store.links.items[0]?.tokenAvailable, true)
+  assert.equal('token' in (store.links.items[0] ?? {}), false)
+  assert.equal(useNotificationStore().history.length, 0)
+})
+
+test('renaming and extending a bundle keep its list and detail caches in sync', async (context) => {
+  let currentLink = { ...link }
+  let currentItems = [item]
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    const path = String(url)
+    if (options.method === 'PATCH') {
+      currentLink = { ...currentLink, title: JSON.parse(options.body).title }
+      return Response.json(currentLink)
+    }
+    if (options.method === 'POST' && path.endsWith('/items')) {
+      currentItems = [...currentItems, { ...item, id: 'snippet-item', resourceId: 'snippet', resourceType: 'SNIPPET', title: 'Snippet' }]
+      currentLink = { ...currentLink, itemCount: 2 }
+      return Response.json({ link: currentLink, items: currentItems }, { status: 201 })
+    }
+    return Response.json(path.includes('/links/link')
+      ? { link: currentLink, items: currentItems }
+      : { items: [currentLink], total: 1, page: 0, size: 20 })
+  })
+  await store.loadLinks({})
+  await store.openBundleDetail('link')
+  assert.equal(await store.renameLink('link', 'Renamed collection'), true)
+  assert.equal(store.links.items[0]?.title, 'Renamed collection')
+  assert.equal(store.bundleDetail?.link.title, 'Renamed collection')
+  assert.equal(await store.addItems('link', [{ type: 'SNIPPET', id: 'snippet' }]), true)
+  assert.equal(store.links.items[0]?.itemCount, 2)
+  assert.equal(store.bundleDetail?.items[1]?.resourceId, 'snippet')
 })

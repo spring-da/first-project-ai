@@ -32,6 +32,14 @@ public class SharingController {
             @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "") String q) { return service.links(owner, page, size, q); }
     @GetMapping("/links/{id}")
     SharingDtos.LinkDetail link(@WorkspaceOwner String owner, @PathVariable String id) { return service.link(owner, id); }
+    @PostMapping("/links/{id}/token")
+    SharingDtos.LinkToken token(@WorkspaceOwner String owner, @PathVariable String id) { return service.linkToken(owner, id); }
+    @PatchMapping("/links/{id}")
+    SharingDtos.LinkSummary rename(@WorkspaceOwner String owner, @PathVariable String id,
+            @Valid @RequestBody SharingDtos.RenameLinkRequest request) { return service.renameLink(owner, id, request); }
+    @PostMapping("/links/{id}/items") @ResponseStatus(HttpStatus.CREATED)
+    SharingDtos.LinkDetail addItems(@WorkspaceOwner String owner, @PathVariable String id,
+            @Valid @RequestBody SharingDtos.AddItemsRequest request) { return service.addItems(owner, id, request); }
     @DeleteMapping("/links/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
     void revoke(@WorkspaceOwner String owner, @PathVariable String id) { service.revokeLinks(owner, new SharingDtos.RevokeRequest(List.of(id))); }
     @PostMapping("/links/revoke") @ResponseStatus(HttpStatus.NO_CONTENT)

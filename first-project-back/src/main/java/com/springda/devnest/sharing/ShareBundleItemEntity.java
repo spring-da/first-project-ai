@@ -24,5 +24,6 @@ public class ShareBundleItemEntity extends BaseEntity {
     public ResourceType getResourceType() { return resourceType; }
     public String getResourceId() { return resourceId; }
     public long getResourceGeneration() { return resourceGeneration; }
+    public int getSortOrder() { return sortOrder; }
     public Instant getRemovedAt() { return removedAt; }
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onActivated, onDeactivated, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Workflow, Braces, Check, CheckSquare, ChevronDown, Clipboard, Code2, Download, Edit3, FileText, Filter, Folder, Heart, LayoutTemplate, LoaderCircle, MoreHorizontal, Plus, RotateCcw, Save, Share2, Sparkles, Square, Trash2, Upload } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Workflow, Braces, Check, CheckSquare, ChevronDown, Clipboard, Code2, Download, Edit3, FileText, Filter, Folder, Heart, LoaderCircle, MoreHorizontal, Plus, RotateCcw, Save, Share2, Sparkles, Square, Trash2, Upload } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import CodeEditor from '../components/CodeEditor.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -27,7 +27,7 @@ import { handleSaveShortcut } from '../utils/markdownEditing'
 import type { CodeSnippet, DomainDraft, KnowledgeBulkMoveItem, KnowledgeDomain, MarkdownDocument, SnippetDraft } from '../types'
 
 import type { FlowchartSummary, FlowchartDiagram } from '../types/flowcharts'
-import { createTemplate, emptyDiagram, importFlowchartSource, MAX_DIAGRAM_BYTES } from '../utils/flowcharts'
+import { importFlowchartSource, MAX_DIAGRAM_BYTES } from '../utils/flowcharts'
 import { useFlowchartSearch } from '../composables/useFlowchartSearch'
 const FlowchartWorkspace = defineAsyncComponent(() => import('../components/flowcharts/FlowchartWorkspace.vue'))
 
@@ -73,7 +73,6 @@ const activeItemType = ref<Exclude<KnowledgeItemType, 'documents'> | null>(null)
 const activeSnippetId = ref('')
 const showCreateMenu = ref(false)
 const showImportMenu = ref(false)
-const showCanvasStarter = ref(false)
 const showDomainManager = ref(false)
 const editingSnippet = ref<CodeSnippet | null>(null)
 const editingDomain = ref<KnowledgeDomain | null>(null)
@@ -220,7 +219,7 @@ function openCreate(type: KnowledgeItemType) {
   showImportMenu.value = false
   if (type === 'documents') void markdownWorkspace.value?.openCreate()
   else if (type === 'snippets') openSnippetEditor()
-  else showCanvasStarter.value = true
+  else void openFlowchart(undefined, true)
 }
 
 function onCreateMenuFocusout(event: FocusEvent) {
@@ -242,12 +241,6 @@ function openImport(type: 'documents' | 'flowcharts') {
   else flowchartInput.value?.click()
 }
 
-function startCanvas(kind: 'blank' | 'sequence' | 'decision' | 'architecture') {
-  showCanvasStarter.value = false
-  const diagram = kind === 'blank' ? emptyDiagram() : createTemplate(kind)
-  void openFlowchart(undefined, true, true, { diagram })
-}
-
 function openSnippetEditor(snippet?: CodeSnippet) {
   activeItemType.value = 'snippets'
   editingSnippet.value = snippet ?? null
@@ -262,11 +255,11 @@ function openSnippetEditor(snippet?: CodeSnippet) {
   itemView.value = 'edit'
 }
 
-async function openFlowchart(entry?: FlowchartSummary, edit = false, syncRoute = true, starter?: { diagram?: FlowchartDiagram; title?: string }) {
+async function openFlowchart(entry?: FlowchartSummary, edit = false, syncRoute = true) {
   if (flowchartOpen.value?.id === entry?.id && !edit && entry) return
   if (markdownWorkspace.value && !await markdownWorkspace.value.canLeaveEditor() || flowchartWorkspace.value && !await flowchartWorkspace.value.canLeave()) return
   closeItemWorkspace(false)
-  flowchartOpen.value = { key: ++flowchartOpening, id: entry?.id, diagram: starter?.diagram, title: starter?.title, edit: edit || !entry }
+  flowchartOpen.value = { key: ++flowchartOpening, id: entry?.id, edit: edit || !entry }
   if (entry && syncRoute) void router.replace({ query: { ...route.query, type: 'flowcharts', focus: entry.id } })
 }
 function closeFlowchart() {
@@ -964,18 +957,6 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
     </div>
 
     <ShareDialog v-if="shareItems" :items="shareItems" @close="shareItems = null" />
-    <AppModal v-if="showCanvasStarter" title="新建流程图" description="选择一个起点，进入画布后仍可自由添加、编辑和连接图形。" wide @close="showCanvasStarter = false">
-      <div class="canvas-starter">
-        <div class="canvas-starter__intro"><span class="canvas-starter__icon"><LayoutTemplate :size="21" /></span><div><strong>像 ProcessOn 一样，从结构开始</strong><p>先选一个常用结构，减少从空白画布开始的阻力。</p></div></div>
-        <div class="canvas-starter__grid">
-          <button type="button" class="canvas-starter__card canvas-starter__card--blank" @click="startCanvas('blank')"><span class="canvas-starter__preview canvas-starter__preview--blank"><Plus :size="28" /></span><span><strong>空白画布</strong><small>自由搭建任意流程与结构</small></span></button>
-          <button type="button" class="canvas-starter__card" @click="startCanvas('sequence')"><span class="canvas-starter__preview"><span class="mini-node mini-node--start">开始</span><i></i><span class="mini-node">处理</span><i></i><span class="mini-node mini-node--end">结束</span></span><span><strong>顺序流程</strong><small>适合 SOP、任务流与操作步骤</small></span></button>
-          <button type="button" class="canvas-starter__card" @click="startCanvas('decision')"><span class="canvas-starter__preview"><span class="mini-node mini-node--start">开始</span><i></i><span class="mini-node mini-node--decision">判断</span><i></i><span class="mini-node mini-node--end">结束</span></span><span><strong>条件分支</strong><small>适合审批、异常与决策路径</small></span></button>
-          <button type="button" class="canvas-starter__card" @click="startCanvas('architecture')"><span class="canvas-starter__preview"><span class="mini-node mini-node--service">前端</span><i></i><span class="mini-node">服务</span><i></i><span class="mini-node mini-node--data">数据</span></span><span><strong>系统架构</strong><small>适合产品、服务与数据关系</small></span></button>
-        </div>
-        <div class="canvas-starter__tips"><span><Workflow :size="15" />拖拽图形快速搭建</span><span><Save :size="15" />自动保存本机草稿</span><span><Share2 :size="15" />随时导出与分享</span></div>
-      </div>
-    </AppModal>
 
     <Teleport to="body">
       <div v-if="rowActionMenu" class="row-menu-layer" role="presentation" @pointerdown.self="rowActionMenu = null" @contextmenu.prevent.self="rowActionMenu = null">
@@ -1197,7 +1178,6 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
 @media (max-width: 980px) {
   .knowledge-results { min-height: max(560px, calc(100svh - 92px)); }
   .snippet-reader-code{ min-height: 320px; }
-  .canvas-starter__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
   .knowledge-page { padding-top: 10px; padding-bottom: 10px; }
@@ -1284,23 +1264,6 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
 .import-knowledge__button { min-height: 42px; padding-inline: 13px 11px; gap: 7px; white-space: nowrap; }
 .import-menu { width: 286px; }
 .import-menu__hint { display: flex; align-items: center; gap: 6px; margin: 5px 5px 2px; padding: 8px 6px 3px; color: var(--muted); border-top: 1px solid var(--border); font-size: var(--font-2xs); }
-.canvas-starter { display: grid; gap: 18px; }
-.canvas-starter__intro { display: flex; align-items: center; gap: 12px; padding: 13px 14px; border: 1px solid var(--accent-border); border-radius: 12px; background: color-mix(in srgb, var(--accent-bg) 52%, var(--panel)); }
-.canvas-starter__icon { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 38px; color: var(--accent); border-radius: 10px; background: var(--panel); box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 12%, transparent); }
-.canvas-starter__intro strong { display: block; color: var(--text); font-size: var(--font-sm); }
-.canvas-starter__intro p { margin: 4px 0 0; color: var(--muted); font-size: var(--font-2xs); }
-.canvas-starter__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
-.canvas-starter__card { min-width: 0; display: grid; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
-.canvas-starter__card:hover, .canvas-starter__card:focus-visible { border-color: var(--accent); box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 14%, transparent); transform: translateY(-2px); }
-.canvas-starter__card > span:last-child { display: grid; gap: 4px; }
-.canvas-starter__card strong { font-size: var(--font-xs); }
-.canvas-starter__card small { color: var(--muted); font-size: var(--font-2xs); line-height: 1.45; }
-.canvas-starter__preview { min-height: 98px; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 10px 6px; border-radius: 9px; background: var(--surface-sunken); }
-.canvas-starter__preview--blank { color: var(--accent); border: 1px dashed var(--accent-border); background: color-mix(in srgb, var(--accent-bg) 34%, var(--panel)); }
-.canvas-starter__preview > i { width: 12px; height: 1px; flex: 0 0 12px; background: var(--border-strong); }
-.mini-node { min-width: 35px; padding: 6px 4px; overflow: hidden; color: var(--text); border: 1px solid var(--accent-border); border-radius: 5px; background: var(--panel); font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
-.mini-node--start { border-radius: 999px; }.mini-node--end { border-radius: 999px; }.mini-node--decision { transform: rotate(45deg); border-radius: 3px; }.mini-node--decision::first-line { display: block; transform: rotate(-45deg); }.mini-node--service { border-radius: 9px; }.mini-node--data { border-radius: 3px; }
-.canvas-starter__tips { display: flex; flex-wrap: wrap; gap: 9px 18px; padding-top: 2px; color: var(--muted); font-size: var(--font-2xs); }.canvas-starter__tips span { display: inline-flex; align-items: center; gap: 6px; }
 .directory-bar { min-width: 0; display: flex; align-items: center; gap: 10px; padding: 11px 18px 13px; border-top: 1px solid color-mix(in srgb, var(--border) 68%, transparent); background: color-mix(in srgb, var(--surface-sunken) 38%, transparent); }
 .directory-bar__label { min-width: max-content; display: flex; align-items: center; gap: 7px; color: var(--subtle); }
 .directory-bar__label > span { display: grid; gap: 1px; }
@@ -1438,7 +1401,6 @@ onDeactivated(() => { emit('editing-change', false); shareItems.value = null; fl
   .import-knowledge__button { min-width: 42px; width: 42px; padding: 0; font-size: 0; }
   .import-knowledge__button svg:last-child { display: none; }
   .create-menu { position: fixed; top: 72px; right: 12px; left: 12px; width: auto; }
-  .canvas-starter__grid { grid-template-columns: 1fr; }
   .directory-bar { gap: 7px; padding: 8px 10px 10px; }
   .directory-bar__label { display: none; }
   .directory-actions { width: 100%; margin: 0; }

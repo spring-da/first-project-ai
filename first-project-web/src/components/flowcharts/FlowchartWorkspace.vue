@@ -27,7 +27,7 @@ const auth = useAuthStore(), notifications = useNotificationStore(), confirmatio
 const ownerKey = auth.workspaceKey ?? '', localId = createClientId(), lifetime = new AbortController()
 const editorShell = ref<EditorShellHandle>(), canvas = computed(() => editorShell.value?.canvas), importInput = ref<HTMLInputElement>()
 const session = shallowRef<FlowchartSession | null>(null), tick = ref(0), loading = ref(true), loadingError = ref(''), localError = ref(''), localSaved = ref('')
-const editing = ref(!!props.startEditing), showStarter = ref(!props.documentId), smallScreen = ref(window.matchMedia('(max-width: 767px)').matches)
+const editing = ref(!!props.startEditing), showStarter = ref(!props.documentId && !props.initialDiagram), smallScreen = ref(window.matchMedia('(max-width: 767px)').matches)
 const selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), exporting = ref(false), showShare = ref(false)
 const drafts = ref<LocalFlowchartDraft[]>([]), showHistory = ref(false), revisions = ref<FlowchartRevision[]>([]), revisionPage = ref(0), revisionBusy = ref(false), revisionPreview = shallowRef<FlowchartRevisionDetail | null>(null)
 let storage: ReturnType<typeof createFlowchartDraftStorage> | undefined
@@ -240,10 +240,23 @@ function mediaChange() { smallScreen.value = media.matches }
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnload); window.addEventListener('online', online); media.addEventListener('change', mediaChange)
   await refreshDrafts()
+  let focusImportedTitle = false
   try {
     if (props.documentId) { const existing = await flowchartApi.get(props.documentId, lifetime.signal); if (active) install(copyDraft(existing), existing) }
+    else if (props.initialDiagram) {
+      install({ title: props.initialTitle || '未命名流程图', domainId: props.domainId, favorite: false, diagram: props.initialDiagram }, null)
+      editing.value = true
+      focusImportedTitle = true
+    }
   } catch (cause) { if (active) loadingError.value = (cause as Error).message }
-  finally { if (active) loading.value = false }
+  finally {
+    if (!active) return
+    loading.value = false
+    if (focusImportedTitle) {
+      await nextTick()
+      editorShell.value?.focusTitle()
+    }
+  }
 })
 function dispose() { if (!active) return; canvas.value?.flush(); void persist().catch(() => {}); active = false; session.value?.dispose(); clearSaveTimers(); clearTimeout(localTimer); lifetime.abort(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('online', online); media.removeEventListener('change', mediaChange); void writes.finally(() => storage?.close()).catch(() => {}) }
 watch(() => auth.workspaceKey, key => { if (key !== ownerKey) dispose() }, { flush: 'sync' })

@@ -574,7 +574,18 @@ function button(label: string, action: () => void) {
   node.onclick = action
   controls.append(node)
 }
+function clickStarterAction(label: string) {
+  const starter = document.querySelector<HTMLElement>('[aria-label="新建流程图起始面板"]')
+  const action = [...(starter?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find((node) => node.textContent?.includes(label))
+  action?.click()
+}
 button('打开流程图', () => { void router.push('/knowledge?type=flowcharts&focus=fixture-flowchart'); controls.open = false })
+button('打开新建流程图起始面板', () => { void router.push('/knowledge?tab=flowcharts&create=1'); controls.open = false })
+button('起始面板：空白画布', () => clickStarterAction('从空白画布开始'))
+button('起始面板：顺序流程模板', () => clickStarterAction('顺序流程'))
+button('起始面板：条件分支模板', () => clickStarterAction('条件分支'))
+button('起始面板：系统结构模板', () => clickStarterAction('系统结构'))
+button('关闭流程图起始面板', () => clickStarterAction('取消'))
 button('模拟其他会话更新流程图', () => { flowchartFixture!.remoteEdit(auth.workspaceUser?.id ?? fixtureUser.id); summary.textContent = '云端版本已更新；当前编辑器保存会冲突' })
 button('切换流程图离线', () => { summary.textContent = `流程图离线：${flowchartFixture!.toggle('offline') ? '开启' : '关闭'}`; window.dispatchEvent(new Event('online')) })
 button('切换流程图 429 限流', () => { summary.textContent = `流程图限流：${flowchartFixture!.toggle('rate') ? '开启' : '关闭'}` })

@@ -14,6 +14,7 @@ import type { LocalFlowchartDraft } from '../../utils/flowchartDrafts'
 import { createClientId } from '../../utils/clientId'
 import { copyDraft, emptyDiagram, createTemplate, exportFlowchartSource, downloadBlob, importFlowchartSource, validateDiagram } from '../../utils/flowcharts'
 import { createNodeLibraryController } from '../../utils/flowchartEditorState'
+import { attachStarterEscapeListener } from '../../utils/flowchartStarterEscape'
 import FlowchartStarter from './FlowchartStarter.vue'
 import FlowchartEditorShell from './FlowchartEditorShell.vue'
 import AppModal from '../AppModal.vue'
@@ -35,6 +36,8 @@ try { storage = createFlowchartDraftStorage() } catch { localError.value = '浏�
 let active = true, idleTimer: ReturnType<typeof setTimeout> | undefined, maxTimer: ReturnType<typeof setTimeout> | undefined, localTimer: ReturnType<typeof setTimeout> | undefined, retryTimer: ReturnType<typeof setTimeout> | undefined
 let writes = Promise.resolve(), failures = 0
 let recoveredDraftId: string | null = null
+let removeStarterEscapeListener: (() => void) | undefined
+let stopStarterEscapeWatch: (() => void) | undefined
 const draft = computed(() => { void tick.value; return session.value?.draft ?? { title: '', domainId: props.domainId, favorite: false, diagram: emptyDiagram() } })
 const dirty = computed(() => { void tick.value; return session.value?.dirty ?? false })
 const status = computed(() => { void tick.value; return session.value?.status ?? 'idle' })
@@ -226,10 +229,11 @@ async function restoreRevision() {
 function shortcut(event: KeyboardEvent) {
   if (!readOnly.value && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !showHistory.value && !showShare.value && !confirmation.current && !document.body.classList.contains('modal-open')) { event.preventDefault(); event.stopPropagation(); void save('MANUAL') }
 }
-function starterShortcut(event: KeyboardEvent) {
-  if (!showStarter.value || event.key !== 'Escape') return
-  event.preventDefault()
-  void close()
+function syncStarterEscapeListener(open: boolean) {
+  removeStarterEscapeListener?.()
+  removeStarterEscapeListener = open
+    ? attachStarterEscapeListener(document, () => showStarter.value, () => { void close() })
+    : undefined
 }
 function manualSave() {
   if (readOnly.value) {
@@ -244,6 +248,7 @@ const media = window.matchMedia('(max-width: 767px)')
 function mediaChange() { smallScreen.value = media.matches }
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnload); window.addEventListener('online', online); media.addEventListener('change', mediaChange)
+  stopStarterEscapeWatch = watch(showStarter, syncStarterEscapeListener, { immediate: true, flush: 'sync' })
   await refreshDrafts()
   let focusImportedTitle = false
   try {
@@ -263,7 +268,7 @@ onMounted(async () => {
     }
   }
 })
-function dispose() { if (!active) return; canvas.value?.flush(); void persist().catch(() => {}); active = false; session.value?.dispose(); clearSaveTimers(); clearTimeout(localTimer); lifetime.abort(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('online', online); media.removeEventListener('change', mediaChange); void writes.finally(() => storage?.close()).catch(() => {}) }
+function dispose() { if (!active) return; canvas.value?.flush(); void persist().catch(() => {}); active = false; session.value?.dispose(); clearSaveTimers(); clearTimeout(localTimer); stopStarterEscapeWatch?.(); removeStarterEscapeListener?.(); lifetime.abort(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('online', online); media.removeEventListener('change', mediaChange); void writes.finally(() => storage?.close()).catch(() => {}) }
 watch(() => auth.workspaceKey, key => { if (key !== ownerKey) dispose() }, { flush: 'sync' })
 watch(inspectorOpen, (open, wasOpen) => {
   if (open && !wasOpen) void nextTick(() => canvas.value?.keepSelectedInView())
@@ -276,7 +281,7 @@ defineExpose({ canLeave })
 
 <template>
   <section class="flow-workspace" aria-label="流程图工作区" @keydown.capture="shortcut">
-    <FlowchartStarter v-if="showStarter" :templates="starterTemplates" @keydown.capture="starterShortcut" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
+    <FlowchartStarter v-if="showStarter" :templates="starterTemplates" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
     <template v-else>
     <div v-if="session" class="flow-meta"><label><span>目录</span><select :value="draft.domainId ?? ''" :disabled="readOnly" @change="field('domainId', ($event.target as HTMLSelectElement).value || null)"><option value="">未分类</option><option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.name }}</option></select></label><button type="button" :disabled="readOnly" :class="{ active: draft.favorite }" @click="field('favorite', !draft.favorite)"><Heart :size="13" :fill="draft.favorite ? 'currentColor' : 'none'" />{{ draft.favorite ? '已收藏' : '收藏' }}</button><span>{{ draft.diagram.nodes.length }} 个图形 · {{ draft.diagram.edges.length }} 条连线</span><small v-if="localSaved">本机草稿已备份</small></div>
     <div v-if="smallScreen" class="flow-notice"><Smartphone :size="15" />手机支持查看和缩放，请在电脑上编辑图形。</div>

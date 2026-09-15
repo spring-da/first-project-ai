@@ -43,8 +43,10 @@ test('a parsed imported draft bypasses the starter and opens the editable workbe
 })
 
 test('starter Escape closes only the active starter without taking over editor shortcuts', () => {
-  assert.match(workspaceSource, /<FlowchartStarter[^>]*@keydown\.capture="starterShortcut"/)
-  assert.match(workspaceSource, /if \(!showStarter\.value \|\| event\.key !== 'Escape'\) return\s*event\.preventDefault\(\)\s*void close\(\)/)
+  assert.match(workspaceSource, /watch\(showStarter, syncStarterEscapeListener, \{ immediate: true, flush: 'sync' \}\)/)
+  assert.match(workspaceSource, /attachStarterEscapeListener\(document, \(\) => showStarter\.value, \(\) => \{ void close\(\) \}\)/)
+  assert.match(workspaceSource, /removeStarterEscapeListener\?\.\(\)/)
+  assert.doesNotMatch(workspaceSource, /@keydown\.capture="starterShortcut"/)
   assert.match(workspaceSource, /if \(!readOnly\.value && \(event\.ctrlKey \|\| event\.metaKey\)/)
 })
 

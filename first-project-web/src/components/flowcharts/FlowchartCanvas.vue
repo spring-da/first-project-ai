@@ -6,7 +6,7 @@ import { Minus, Plus, Scan, Map, Grid2X2, MousePointer2, Hand, Undo2, Redo2, Cop
 import type { FlowchartDiagram, FlowNodeKind, FlowNode, FlowEdge } from '../../types/flowcharts'
 import { nodeToCell, edgeToCell, graphDiagram } from '../../utils/flowchartAdapter'
 import { makeNode, makeEdge, validateDiagram, downloadBlob, flowchartFingerprint } from '../../utils/flowcharts'
-import { classifyCanvasWheel, normalizeCanvasWheelDelta, runCanvasExportCycle } from '../../utils/flowchartEditor'
+import { classifyCanvasWheel, normalizeCanvasWheelDelta, runCanvasExportCycle, sanitizeFlowchartSvgMarkup } from '../../utils/flowchartEditor'
 import { readNativeFlowNodeKind, replaceFlowchartSelection } from '../../utils/flowchartEditorState'
 import { describeOrthogonalSegments, ensureEditableOrthogonalRoute, insertOrthogonalVertex, moveOrthogonalSegment, moveOrthogonalVertex, normalizeOrthogonalPoints, removeOrthogonalVertex, createEdgeDragSnapshot, restoreEdgeDragSnapshot, type EdgePoint, type OrthogonalSegment } from '../../utils/flowchartEdgeEditor'
 
@@ -455,7 +455,7 @@ async function exportImage(format: 'png' | 'svg', title: string) {
       background.setAttribute('x', String(box?.[0] ?? 0)); background.setAttribute('y', String(box?.[1] ?? 0)); background.setAttribute('width', String(box?.[2] ?? '100%')); background.setAttribute('height', String(box?.[3] ?? '100%')); background.setAttribute('fill', '#ffffff'); svg.insertBefore(background, svg.firstChild)
     } }
     try {
-      if (format === 'svg') downloadBlob(new Blob([await exportGraph.toSVGAsync(options)], { type: 'image/svg+xml' }), `${title}.svg`)
+      if (format === 'svg') downloadBlob(new Blob([sanitizeFlowchartSvgMarkup(await exportGraph.toSVGAsync(options))], { type: 'image/svg+xml' }), `${title}.svg`)
       else {
         const data = await exportGraph.toPNGAsync({ ...options, backgroundColor: '#ffffff', padding: 24, ratio: 2 })
         const bytes = Uint8Array.from(atob(data.split(',')[1]!), c => c.charCodeAt(0))

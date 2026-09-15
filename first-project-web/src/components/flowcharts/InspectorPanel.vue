@@ -89,7 +89,7 @@ defineExpose({ focusLabel: () => labelInput.value?.focus() })
 
 <style scoped>
 .inspector-panel { position: relative; z-index: 1; width: 304px; flex: 0 0 304px; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 16px 15px; border-left: 1px solid var(--flow-border, var(--border)); background: var(--flow-surface, var(--panel)); color: var(--flow-text, var(--text)); box-shadow: -8px 0 20px color-mix(in srgb, var(--flow-text, var(--text)) 8%, transparent); color-scheme: light; }
-:global(:root:not([data-theme='light'])) .inspector-panel { color-scheme: dark; }
+:global(:root[data-theme='dark'] .inspector-panel) { color-scheme: dark; }
 .inspector-panel--collapsed { width: 44px; flex-basis: 44px; padding: 8px 6px; overflow: hidden; }
 .inspector-panel__rail,.inspector-panel__toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--flow-muted, var(--muted)); cursor: pointer; transition: color .16s ease, border-color .16s ease, background .16s ease; }
 .inspector-panel__rail:hover,.inspector-panel__toggle:hover { color: var(--flow-accent, var(--accent)); border-color: var(--flow-border, var(--border)); background: var(--flow-surface-alt, var(--surface-sunken)); }.inspector-panel__rail:focus-visible,.inspector-panel__toggle:focus-visible,.inspector-panel button:focus-visible { outline: 2px solid var(--flow-accent, var(--accent)); outline-offset: 2px; }

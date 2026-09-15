@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { compileStyle, parse } from '@vue/compiler-sfc'
 
 const workspaceSource = readFileSync(new URL('../src/components/flowcharts/FlowchartWorkspace.vue', import.meta.url), 'utf8')
 const inspectorSource = readFileSync(new URL('../src/components/flowcharts/InspectorPanel.vue', import.meta.url), 'utf8')
@@ -54,4 +55,11 @@ test('hidden starter import input is inaccessible while its visible trigger rema
   assert.match(workspaceSource, /@import="chooseImport"/)
   assert.match(workspaceSource, /function chooseImport\(\) \{ importInput\.value\?\.click\(\) \}/)
   assert.match(workspaceSource, /<input ref="importInput" class="flow-import-input"[^>]*tabindex="-1"[^>]*aria-hidden="true"/)
+})
+
+test('compiled dark workspace CSS applies flow tokens to the mounted workbench', () => {
+  const descriptor = parse(workspaceSource, { filename: 'FlowchartWorkspace.vue' }).descriptor
+  const compiled = compileStyle({ filename: 'FlowchartWorkspace.vue', id: 'data-v-flowchart-theme', source: descriptor.styles.map(style => style.content).join('\n'), scoped: true })
+  assert.deepEqual(compiled.errors, [])
+  assert.match(compiled.code, /:root\[data-theme=(?:"dark"|'dark'|dark)\] \.flow-workspace\s*\{[^}]*--flow-bg:\s*#151a23[^}]*--flow-surface:\s*#1d2430[^}]*--flow-text:\s*#edf2fb/s)
 })

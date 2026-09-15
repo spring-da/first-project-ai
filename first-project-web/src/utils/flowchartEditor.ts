@@ -44,6 +44,47 @@ export async function runCanvasExportCycle<T>(setOverlayHidden: (hidden: boolean
   finally { setOverlayHidden(false) }
 }
 
+/**
+ * Defend exported SVGs against an exporter that serializes surrounding editor
+ * chrome. X6 normally returns graph-only markup, but the final artifact must
+ * never include canvas controls or the workbench inspector.
+ */
+const FLOWCHART_EXPORT_OVERLAY_CLASSES = new Set([
+  'flow-canvas__tools',
+  'flow-canvas__context',
+  'flow-canvas__edge-editor',
+  'flow-canvas__mini',
+  'flow-canvas__hint',
+  'inspector-panel',
+])
+
+function isExportOverlayElement(token: string): boolean {
+  const classValue = token.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2] ?? ''
+  return classValue.split(/\s+/).some(name => FLOWCHART_EXPORT_OVERLAY_CLASSES.has(name))
+}
+
+/** Remove complete overlay subtrees from serialized SVG text before download. */
+export function sanitizeFlowchartSvgMarkup(markup: string): string {
+  let skippedDepth = 0
+  const output: string[] = []
+  for (const token of markup.match(/<!--[\s\S]*?-->|<[^>]*>|[^<]+/g) ?? []) {
+    const isClosing = /^<\//.test(token)
+    const isOpening = /^<[A-Za-z][^\s/>]*/.test(token)
+    const isSelfClosing = /\/\s*>$/.test(token)
+    if (skippedDepth) {
+      if (isOpening && !isSelfClosing) skippedDepth++
+      else if (isClosing) skippedDepth--
+      continue
+    }
+    if (isOpening && isExportOverlayElement(token)) {
+      if (!isSelfClosing) skippedDepth = 1
+      continue
+    }
+    output.push(token)
+  }
+  return output.join('')
+}
+
 export const FLOWCHART_SHAPES: FlowchartShapeItem[] = [
   { kind: 'terminal', label: '开始 / 结束', category: 'flow', hint: '流程起止节点' },
   { kind: 'rectangle', label: '处理步骤', category: 'flow', hint: '执行一个动作' },

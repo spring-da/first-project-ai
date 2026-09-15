@@ -49,6 +49,17 @@ test('failed creation retries retain the same idempotency key and local content'
   await session.save('AUTO')
   assert.deepEqual(keys, ['stable-key', 'stable-key'])
 })
+test('a starter-created draft remains dirty after failed first cloud save', async () => {
+  const initial: FlowchartDraft = { title: '新流程', domainId: null, favorite: false, diagram: createTemplate('sequence') }
+  const session = new FlowchartSession(initial, null, 'new-flowchart', {
+    create: async () => { throw new Error('offline') },
+    update: async (_id, input) => saved(input),
+  })
+  await assert.rejects(session.save('MANUAL'), /offline/)
+  assert.equal(session.dirty, true)
+  assert.equal(session.status, 'error')
+  assert.deepEqual(session.draft.diagram, initial.diagram)
+})
 test('idempotent creation response cannot erase edits made after a lost first response', async () => {
   let creates = 0
   const updated: string[] = []

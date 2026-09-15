@@ -324,6 +324,9 @@ Content-Type: application/json
 | `POST /sharing/links` | `{title,items:Reference[],expiresAt}`；201 `{id,token,title,expiresAt,createdAt}`。标题 1–200 字；客户端默认 7 天、允许选择 1–365 天；服务端验证截止时间晚于当前且不超过 365 天。 |
 | `GET /sharing/links` | `page=0&size=20&q=`；`{items:LinkSummary[],total,page,size}`，按创建时间、ID 降序；`q` 搜索集合标题。 |
 | `GET /sharing/links/{id}` | `{link:LinkSummary,items:[{id,resourceType,resourceId,title,removedAt,available}]}`。移除或原文消失的条目保留在管理目录中。 |
+| `POST /sharing/links/{id}/token` | 200 `{token,regenerated}`。仅本人可为尚未撤销、尚未过期的链接获取完整令牌；新链接返回原令牌并令 `regenerated=false`。迁移前旧链接不可逆，首次调用会替换令牌并令 `regenerated=true`，旧地址随即失效。 |
+| `PATCH /sharing/links/{id}` | `{title}`；200 `LinkSummary`。标题 1–200 字；仅可修改本人尚未撤销、尚未过期的链接。 |
+| `POST /sharing/links/{id}/items` | `{items:Reference[]}`；201 `LinkDetail`。向本人尚未撤销、尚未过期的链接追加 1–100 项未曾加入该链接的内容；链接当前未移除条目总数最多 100。 |
 | `DELETE /sharing/links/{id}` | 204，撤销整条链接，可重复执行。 |
 | `POST /sharing/links/revoke` | `{ids:string[]}`；204，原子批量撤销 1–100 条本人链接。 |
 | `DELETE /sharing/links/{id}/items/{itemId}` | 204，移除当前集合中的一项，可重复执行，不影响其他集合或共享池。 |
@@ -333,15 +336,15 @@ Content-Type: application/json
 
 `PoolSummary` 为 `{id,resourceType,title,excerpt,authorName,sharedAt,updatedAt,mine}`；`excerpt` 最多 240 字符。`mine=true` 是本人分享管理视图，可供管理员查看禁用成员的未撤下记录；面向成员的普通共享池始终排除禁用作者。`SharedContent` 为 `{id,resourceType,title,content,language,category,tags,updatedAt}`，其中 `id` 为共享条目 ID，非原文 ID。`language`/`category` 不适用时为 `null`，`tags` 不适用时为空数组。
 
-`LinkSummary` 为 `{id,title,expiresAt,createdAt,revokedAt,active,itemCount}`。`itemCount` 是未移除且原文仍有效的条目数；`active` 还要求作者启用、未撤销、未到期且至少有一个有效条目。链接已移除最后一项、全部原文失效、作者禁用/删除、令牌无效、撤销或到期时，公开请求统一返回 404。页码须非负，每页 1–100 条，搜索文本最多 200 字；SQL 对 `%`、`_` 按普通字符搜索。
+`LinkSummary` 为 `{id,title,expiresAt,createdAt,revokedAt,active,itemCount,tokenAvailable}`。`itemCount` 是未移除且原文仍有效的条目数；`active` 还要求作者启用、未撤销、未到期且至少有一个有效条目。`tokenAvailable` 只说明服务端能否恢复令牌，不包含令牌或摘要。链接已移除最后一项、全部原文失效、作者禁用/删除、令牌无效、撤销或到期时，公开请求统一返回 404。页码须非负，每页 1–100 条，搜索文本最多 200 字；SQL 对 `%`、`_` 按普通字符搜索。
 
-新链接使用 256 位随机令牌，数据库仅保存 SHA-256 摘要，明文只在创建响应显示一次，管理目录不返回令牌或摘要。共享池撤下与外链撤销互不影响。内容后续保存会同步到所有仍有效的分享。删除原文会递增分享代次，终止旧共享池条目、集合中的旧条目及旧单篇外链；恢复后需要主动重新发布，旧集合不会自动加入恢复后的内容。删除领域仅取消目录归属，不删除原文，也不撤销分享。
+新链接使用 256 位随机令牌：SHA-256 摘要用于公开访问查询，原始令牌使用 AES-GCM 加密后保存，仅在创建或本人主动复制接口中解密返回；管理列表不返回令牌、摘要或密文。`JWT_SECRET_BASE64` 同时派生当前分享令牌加密密钥，因此轮换该密钥前应先制定已有外链的重新生成方案。迁移前仅有摘要的旧链接无法还原，管理端须在用户确认后用新令牌替换，旧地址失效。共享池撤下与外链撤销互不影响。内容后续保存会同步到所有仍有效的分享。删除原文会递增分享代次，终止旧共享池条目、集合中的旧条目及旧单篇外链；恢复后需要主动重新发布，旧集合不会自动加入恢复后的内容。删除领域仅取消目录归属，不删除原文，也不撤销分享。
 
 原 `markdown-documents/{id}/shares`、`snippets/{id}/shares`、`logs/{id}/shares` 和相应匿名单篇接口继续保留；旧链接也遵循作者启用和删除后不复活的规则。共享原文无法收回接收者已保存的副本。
 
 图片权限通过 CommonMark 图片节点解析，支持可选标题、尖括号目标及引用式图片；普通链接、代码示例、原始 HTML 和非精确托管路径不授予图片权限，新旧分享使用同一解析器。图片仍须属于原作者且属于当前选中的单篇内容。
 
-Flyway `V18` 新增共享表、索引、分享代次及代码片段/日志内部乐观锁版本。并发的旧保存、删除或恢复请求遇到版本变化返回 409，防止旧事务覆盖分享代次；客户端保留本地内容并重新加载。账号删除通过外键级联清理共享池、集合及集合条目。已有回收站内容的代次在迁移时递增，以免历史链接在恢复后意外重新生效。迁移不修改原文正文；在隔离 PostgreSQL 上验证后按常规部署流程执行。
+Flyway `V18` 新增共享表、索引、分享代次及代码片段/日志内部乐观锁版本；`V20` 为分享集合增加可空的加密令牌列，已有摘要和公开地址不变。并发的旧保存、删除或恢复请求遇到版本变化返回 409，防止旧事务覆盖分享代次；客户端保留本地内容并重新加载。账号删除通过外键级联清理共享池、集合及集合条目。已有回收站内容的代次在迁移时递增，以免历史链接在恢复后意外重新生效。迁移不修改原文正文；在隔离 PostgreSQL 上验证后按常规部署流程执行。
 
 ## 健康检查
 

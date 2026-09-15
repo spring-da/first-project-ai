@@ -70,7 +70,7 @@ class PostgreSqlIntegrationTest {
 
     @Test
     void flywaySchemaValidatesAndPreservesUnicodeHistoryVersionsAndIsolation() {
-        assertThat(jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1", String.class)).isEqualTo("19");
+        assertThat(jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1", String.class)).isEqualTo("20");
         var owner = users.saveAndFlush(new UserEntity("pg@example.test", "$2a$12$preserved-password-hash", "Postgres 用户"));
         String content = "# 中文知识库 🧠\n代码与引号 ' \\\n".repeat(6000);
         var first = markdown.create(owner.getId(), new MarkdownDocumentDtos.CreateRequest("知识库", "中文.md", content, null, true));

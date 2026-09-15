@@ -226,6 +226,11 @@ async function restoreRevision() {
 function shortcut(event: KeyboardEvent) {
   if (!readOnly.value && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !showHistory.value && !showShare.value && !confirmation.current && !document.body.classList.contains('modal-open')) { event.preventDefault(); event.stopPropagation(); void save('MANUAL') }
 }
+function starterShortcut(event: KeyboardEvent) {
+  if (!showStarter.value || event.key !== 'Escape') return
+  event.preventDefault()
+  void close()
+}
 function manualSave() {
   if (readOnly.value) {
     if (!smallScreen.value && session.value) editing.value = true
@@ -271,7 +276,7 @@ defineExpose({ canLeave })
 
 <template>
   <section class="flow-workspace" aria-label="流程图工作区" @keydown.capture="shortcut">
-    <FlowchartStarter v-if="showStarter" :templates="starterTemplates" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
+    <FlowchartStarter v-if="showStarter" :templates="starterTemplates" @keydown.capture="starterShortcut" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
     <template v-else>
     <div v-if="session" class="flow-meta"><label><span>目录</span><select :value="draft.domainId ?? ''" :disabled="readOnly" @change="field('domainId', ($event.target as HTMLSelectElement).value || null)"><option value="">未分类</option><option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.name }}</option></select></label><button type="button" :disabled="readOnly" :class="{ active: draft.favorite }" @click="field('favorite', !draft.favorite)"><Heart :size="13" :fill="draft.favorite ? 'currentColor' : 'none'" />{{ draft.favorite ? '已收藏' : '收藏' }}</button><span>{{ draft.diagram.nodes.length }} 个图形 · {{ draft.diagram.edges.length }} 条连线</span><small v-if="localSaved">本机草稿已备份</small></div>
     <div v-if="smallScreen" class="flow-notice"><Smartphone :size="15" />手机支持查看和缩放，请在电脑上编辑图形。</div>
@@ -284,7 +289,7 @@ defineExpose({ canLeave })
     <AppModal v-if="showHistory" title="历史版本" description="自动检查点间隔 5 分钟，手动保存即时生成；保留最近 100 条。" wide @close="showHistory = false"><div v-if="revisionBusy" role="status">正在读取历史…</div><div class="flow-history"><div class="flow-history__list"><button v-for="revision in revisions" :key="revision.id" type="button" :class="{ active: revisionPreview?.id === revision.id }" @click="previewRevision(revision.id)"><strong>{{ revision.title }}</strong><small>{{ new Date(revision.createdAt).toLocaleString() }} · v{{ revision.documentVersion }}</small></button><p v-if="!revisions.length">暂无历史版本。</p><div class="flow-history__pages"><button type="button" :disabled="revisionPage === 0 || revisionBusy" @click="history(revisionPage - 1)">上一页</button><span>{{ revisionPage + 1 }}</span><button type="button" :disabled="revisions.length < 20 || revisionBusy" @click="history(revisionPage + 1)">下一页</button></div></div><div v-if="revisionPreview" class="flow-history__preview"><FlowchartCanvas :key="revisionPreview.id" :diagram="revisionPreview.diagram" readonly /><button type="button" class="button button-primary" :disabled="revisionBusy" @click="restoreRevision">恢复此版本</button></div></div></AppModal>
     <ShareDialog v-if="showShare && doc" :items="[{ type: 'FLOWCHART', id: doc.id, title: draft.title }]" @close="showShare = false" />
     </template>
-    <input ref="importInput" class="flow-import-input" type="file" accept=".flowchart.json,application/json" @change="importFile" />
+    <input ref="importInput" class="flow-import-input" type="file" accept=".flowchart.json,application/json" tabindex="-1" aria-hidden="true" @change="importFile" />
   </section>
 </template>
 

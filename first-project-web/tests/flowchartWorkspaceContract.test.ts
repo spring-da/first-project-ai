@@ -41,3 +41,15 @@ test('a parsed imported draft bypasses the starter and opens the editable workbe
   assert.match(workspaceSource, /else if \(props\.initialDiagram\) \{\s*install\(/)
   assert.match(workspaceSource, /focusImportedTitle/)
 })
+
+test('starter Escape closes only the active starter without taking over editor shortcuts', () => {
+  assert.match(workspaceSource, /<FlowchartStarter[^>]*@keydown\.capture="starterShortcut"/)
+  assert.match(workspaceSource, /if \(!showStarter\.value \|\| event\.key !== 'Escape'\) return\s*event\.preventDefault\(\)\s*void close\(\)/)
+  assert.match(workspaceSource, /if \(!readOnly\.value && \(event\.ctrlKey \|\| event\.metaKey\)/)
+})
+
+test('hidden starter import input is inaccessible while its visible trigger remains operable', () => {
+  assert.match(workspaceSource, /@import="chooseImport"/)
+  assert.match(workspaceSource, /function chooseImport\(\) \{ importInput\.value\?\.click\(\) \}/)
+  assert.match(workspaceSource, /<input ref="importInput" class="flow-import-input"[^>]*tabindex="-1"[^>]*aria-hidden="true"/)
+})

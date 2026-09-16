@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { AlertCircle, ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Code2, Copy, FileText, Filter, Link2, LoaderCircle, Plus, RefreshCw, Save, Search as SearchIcon, Share2, Unlink, UsersRound, X } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Code2, Copy, FileText, Filter, Folder, Link2, LoaderCircle, Plus, RefreshCw, Search, Share2, Unlink, UsersRound, X } from 'lucide-vue-next'
 import AppModal from '../components/AppModal.vue'
 import EmptyState from '../components/EmptyState.vue'
 import SharedContentReader from '../components/SharedContentReader.vue'
@@ -11,15 +11,16 @@ import { useNotificationStore } from '../stores/notifications'
 import { useSharingStore } from '../stores/sharing'
 import { useSearchStore } from '../stores/search'
 import { useWorkspaceStore } from '../stores/workspace'
-import type { ShareBundleItem, ShareBundleSummary, ShareResourceType, ShareSelection, SharedPoolEntry } from '../types/sharing'
+import { getShareBundleToken } from '../utils/shareBundleLinks'
+import type { ShareBundleItem, ShareBundleSummary, ShareReference, ShareResourceType, SharedPoolEntry } from '../types/sharing'
 
 type Tab = 'all' | 'mine' | 'links'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const sharing = useSharingStore()
-const searchState = useSearchStore()
 const workspace = useWorkspaceStore()
+const searchState = useSearchStore()
 const confirmation = useConfirmationStore()
 const notifications = useNotificationStore()
 const tab = computed<Tab>(() => route.query.tab === 'links' ? 'links' : route.query.tab === 'mine' ? 'mine' : 'all')
@@ -37,12 +38,6 @@ const typeOptions: Array<{ value: ShareResourceType | ''; label: string; descrip
 const selectedTypeOption = computed(() => typeOptions.find((option) => option.value === typeFilter.value) ?? typeOptions[0]!)
 const selected = ref<string[]>([])
 const confirming = ref(false)
-const titleDraft = ref('')
-const titleTouched = ref(false)
-const showAddItems = ref(false)
-const additionQuery = ref('')
-const additionSelection = ref<string[]>([])
-const copiedLinkId = ref('')
 const isLinks = computed(() => tab.value === 'links')
 const currentPage = computed(() => isLinks.value ? sharing.links : sharing.pool)
 const request = computed(() => isLinks.value ? sharing.requests.links : sharing.requests.pool)
@@ -55,87 +50,58 @@ const selectableIds = computed(() => isLinks.value
 const allSelected = computed(() => selectableIds.value.length > 0 && selectableIds.value.every((id) => selected.value.includes(id)))
 const typeLabels: Record<ShareResourceType, string> = { MARKDOWN: '文章', SNIPPET: '代码片段', FLOWCHART: '流程图' }
 const typeIcons = { MARKDOWN: FileText, SNIPPET: Code2, FLOWCHART: BookOpen }
-type PickerItem = ShareSelection & { detail: string }
-const bundleEditable = computed(() => {
-  const link = sharing.bundleDetail?.link
-  return !!link && !link.revokedAt && new Date(link.expiresAt).getTime() > Date.now()
-})
-const titleError = computed(() => {
-  const value = titleDraft.value.trim()
-  if (!value) return '请输入分享标题。'
-  if (value.length > 200) return '分享标题不能超过 200 个字。'
-  return ''
-})
-const titleChanged = computed(() => !!sharing.bundleDetail && titleDraft.value.trim() !== sharing.bundleDetail.link.title)
-const workspaceItems = computed<PickerItem[]>(() => [
-  ...workspace.markdownDocuments.filter((item) => !item.deletedAt).map((item) => ({ type: 'MARKDOWN' as const, id: item.id, title: item.title, detail: item.fileName || 'Markdown 文章' })),
-  ...workspace.snippets.map((item) => ({ type: 'SNIPPET' as const, id: item.id, title: item.title, detail: item.language || '代码片段' })),
-  ...workspace.flowcharts.filter((item) => !item.deletedAt).map((item) => ({ type: 'FLOWCHART' as const, id: item.id, title: item.title, detail: `${item.nodeCount} 个节点 · ${item.edgeCount} 条连线` })),
-])
-const existingResourceKeys = computed(() => new Set((sharing.bundleDetail?.items ?? []).map((item) => resourceKey(item))))
-const additionCandidates = computed(() => workspaceItems.value.filter((item) => !existingResourceKeys.value.has(resourceKey(item))))
-const filteredAdditionCandidates = computed(() => {
-  const query = additionQuery.value.trim().toLocaleLowerCase()
-  return query ? additionCandidates.value.filter((item) => `${item.title}\n${item.detail}\n${typeLabels[item.type]}`.toLocaleLowerCase().includes(query)) : additionCandidates.value
-})
-const currentBundleItemCount = computed(() => (sharing.bundleDetail?.items ?? []).filter((item) => !item.removedAt).length)
-const additionLimit = computed(() => Math.max(0, 100 - currentBundleItemCount.value))
-const additionOverLimit = computed(() => additionSelection.value.length > additionLimit.value)
-const pickerLoading = computed(() => ['markdownDocuments', 'snippets', 'flowcharts'].some((key) => workspace.moduleStates[key as 'markdownDocuments' | 'snippets' | 'flowcharts'].loading))
-const pickerError = computed(() => [...new Set(['markdownDocuments', 'snippets', 'flowcharts']
-  .map((key) => workspace.moduleStates[key as 'markdownDocuments' | 'snippets' | 'flowcharts'].error).filter(Boolean))].join('；'))
+type AddableResource = ShareReference & { key: string; title: string; meta: string; domainId: string | null }
+type ContentTreeGroup = { id: string; label: string; children: AddableResource[] }
+const detailTitle = ref('')
+const titleSaved = ref(false)
+const addPickerOpen = ref(false)
+const addSearch = ref('')
+const addSearchInput = ref<HTMLInputElement | null>(null)
+const addSelection = ref<string[]>([])
+const expandedAddDomains = ref(new Set<string>())
+const copiedLink = ref(false)
+let copiedLinkTimer: ReturnType<typeof setTimeout> | undefined
+let titleSavedTimer: ReturnType<typeof setTimeout> | undefined
 let mounted = true
 let viewVersion = 0
-let copiedTimer: ReturnType<typeof setTimeout> | undefined
 
-function resourceKey(item: { resourceType?: ShareResourceType; type?: ShareResourceType; resourceId?: string; id: string }) {
-  return `${item.resourceType ?? item.type}:${item.resourceId ?? item.id}`
-}
-
-function loadPickerSources(force = false) {
-  void Promise.allSettled([
-    workspace.loadModule('markdownDocuments', force),
-    workspace.loadModule('snippets', force),
-    workspace.loadModule('flowcharts', force),
-  ])
-}
-
-function openAdditionPicker() {
-  if (!bundleEditable.value || busy.value) return
-  showAddItems.value = true
-  additionQuery.value = ''
-  additionSelection.value = []
-  loadPickerSources()
-}
-
-function closeAdditionPicker() {
-  showAddItems.value = false
-  additionQuery.value = ''
-  additionSelection.value = []
-}
-
-function toggleAddition(item: PickerItem) {
-  if (busy.value) return
-  const key = resourceKey(item)
-  additionSelection.value = additionSelection.value.includes(key)
-    ? additionSelection.value.filter((entry) => entry !== key)
-    : [...additionSelection.value, key]
-}
-
-async function saveTitle() {
-  const detail = sharing.bundleDetail
-  titleTouched.value = true
-  if (!detail || titleError.value || !titleChanged.value || !bundleEditable.value) return
-  if (await sharing.renameLink(detail.link.id, titleDraft.value)) titleTouched.value = false
-}
-
-async function addSelectedItems() {
-  const detail = sharing.bundleDetail
-  if (!detail || !bundleEditable.value || !additionSelection.value.length || additionOverLimit.value) return
-  const keys = new Set(additionSelection.value)
-  const additions = additionCandidates.value.filter((item) => keys.has(resourceKey(item)))
-  if (await sharing.addItems(detail.link.id, additions)) closeAdditionPicker()
-}
+const addableResources = computed<AddableResource[]>(() => {
+  const existing = new Set((sharing.bundleDetail?.items ?? []).map((item) => `${item.resourceType}:${item.resourceId}`))
+  return [
+    ...workspace.markdownDocuments.filter((item) => !item.deletedAt).map((item) => ({
+      type: 'MARKDOWN' as const, id: item.id, key: `MARKDOWN:${item.id}`, title: item.title || '未命名文章',
+      meta: '文章', domainId: item.domainId,
+    })),
+    ...workspace.snippets.map((item) => ({
+      type: 'SNIPPET' as const, id: item.id, key: `SNIPPET:${item.id}`, title: item.title || '未命名代码片段',
+      meta: `代码片段 · ${item.language || '纯文本'}`, domainId: item.domainId,
+    })),
+    ...workspace.flowcharts.filter((item) => !item.deletedAt).map((item) => ({
+      type: 'FLOWCHART' as const, id: item.id, key: `FLOWCHART:${item.id}`, title: item.title || '未命名流程图',
+      meta: '流程图', domainId: item.domainId,
+    })),
+  ].filter((item) => !existing.has(item.key))
+})
+const filteredAddableResources = computed(() => {
+  const query = addSearch.value.trim().toLocaleLowerCase()
+  return addableResources.value.filter((item) => !query || `${item.title} ${item.meta}`.toLocaleLowerCase().includes(query))
+})
+const addContentGroups = computed<ContentTreeGroup[]>(() => {
+  const byDomain = new Map<string | null, AddableResource[]>()
+  for (const item of filteredAddableResources.value) byDomain.set(item.domainId, [...(byDomain.get(item.domainId) ?? []), item])
+  const groups: ContentTreeGroup[] = [{ id: 'unassigned', label: '未分类', children: byDomain.get(null) ?? [] }]
+  for (const domain of [...workspace.domains].sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'zh-CN'))) {
+    groups.push({ id: domain.id, label: domain.name || '未命名目录', children: byDomain.get(domain.id) ?? [] })
+  }
+  return groups.filter((group) => group.children.length > 0)
+})
+const addSelectionCount = computed(() => addSelection.value.length)
+const addableCount = computed(() => addableResources.value.length)
+const detailShareUrl = computed(() => {
+  const token = getShareBundleToken(auth.workspaceKey, sharing.detailLinkId)
+  return token ? `${window.location.origin}/share/bundle/${encodeURIComponent(token)}` : ''
+})
+const titleChanged = computed(() => detailTitle.value.trim() !== (sharing.bundleDetail?.link.title ?? ''))
 
 async function openTypeMenu(index = typeOptions.findIndex((option) => option.value === typeFilter.value)) {
   if (busy.value) return
@@ -228,67 +194,97 @@ function linkStatus(link: ShareBundleSummary) {
   return link.active ? '有效' : '不可访问'
 }
 
-async function writeClipboardText(value: string) {
-  if (window.isSecureContext && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value)
-    return
+function isAddGroupExpanded(groupId: string) {
+  return Boolean(addSearch.value.trim()) || expandedAddDomains.value.has(groupId)
+}
+
+function toggleAddGroupExpanded(groupId: string) {
+  const next = new Set(expandedAddDomains.value)
+  if (next.has(groupId)) next.delete(groupId)
+  else next.add(groupId)
+  expandedAddDomains.value = next
+}
+
+function groupSelectionState(group: ContentTreeGroup) {
+  const selected = group.children.filter((item) => addSelection.value.includes(item.key)).length
+  return { checked: group.children.length > 0 && selected === group.children.length, indeterminate: selected > 0 && selected < group.children.length }
+}
+
+function toggleAddGroup(group: ContentTreeGroup) {
+  const keys = group.children.map((item) => item.key)
+  if (!keys.length) return
+  const state = groupSelectionState(group)
+  addSelection.value = state.checked
+    ? addSelection.value.filter((key) => !keys.includes(key))
+    : [...new Set([...addSelection.value, ...keys])]
+}
+
+function toggleAddItem(item: AddableResource) {
+  addSelection.value = addSelection.value.includes(item.key)
+    ? addSelection.value.filter((key) => key !== item.key)
+    : [...addSelection.value, item.key]
+}
+
+function openAddPicker() {
+  const detail = sharing.bundleDetail
+  if (!detail || !detail.link.active || busy.value) return
+  addSearch.value = ''
+  addSelection.value = []
+  expandedAddDomains.value = new Set(addContentGroups.value.map((group) => group.id))
+  addPickerOpen.value = true
+  void nextTick(() => addSearchInput.value?.focus())
+}
+
+function closeAddPicker() {
+  addPickerOpen.value = false
+  addSearch.value = ''
+  addSelection.value = []
+}
+
+async function saveAddedItems() {
+  if (!sharing.detailLinkId || !addSelection.value.length || busy.value) return
+  const references = addSelection.value
+    .map((key) => addableResources.value.find((item) => item.key === key))
+    .filter((item): item is AddableResource => Boolean(item))
+    .map(({ type, id }) => ({ type, id }))
+  if (await sharing.addItems(sharing.detailLinkId, references)) closeAddPicker()
+}
+
+async function saveTitle() {
+  const value = detailTitle.value.trim()
+  if (!sharing.detailLinkId || !value || !titleChanged.value || busy.value) return
+  if (await sharing.updateTitle(sharing.detailLinkId, value)) {
+    titleSaved.value = true
+    if (titleSavedTimer !== undefined) clearTimeout(titleSavedTimer)
+    titleSavedTimer = setTimeout(() => { titleSaved.value = false }, 2200)
   }
-  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
-  const field = document.createElement('textarea')
-  field.value = value
-  field.setAttribute('readonly', '')
-  field.style.position = 'fixed'
-  field.style.opacity = '0'
-  document.body.appendChild(field)
-  field.focus()
-  field.select()
-  const copied = document.execCommand('copy')
-  field.remove()
-  previousFocus?.focus()
-  if (!copied) throw new Error('copy failed')
 }
 
-function showCopied(linkId: string) {
-  clearTimeout(copiedTimer)
-  copiedLinkId.value = linkId
-  copiedTimer = setTimeout(() => { if (mounted) copiedLinkId.value = '' }, 1600)
-}
-
-async function retrieveAndCopyLink(link: ShareBundleSummary) {
-  const owner = auth.workspaceKey
-  const version = viewVersion
-  const result = await sharing.getLinkToken(link.id)
-  if (!result || !mounted || owner !== auth.workspaceKey || version !== viewVersion) return
+async function copyLink() {
+  if (!detailShareUrl.value || busy.value) return
   try {
-    await writeClipboardText(`${window.location.origin}/share/bundle/${encodeURIComponent(result.token)}`)
-    if (!mounted || owner !== auth.workspaceKey || version !== viewVersion) return
-    showCopied(link.id)
-    notifications.notify(result.regenerated ? '新分享链接已生成并复制，原地址已失效。' : '分享链接已复制。', { type: 'success' })
+    if (window.isSecureContext && navigator.clipboard?.writeText) await navigator.clipboard.writeText(detailShareUrl.value)
+    else {
+      const field = document.createElement('textarea')
+      field.value = detailShareUrl.value
+      field.setAttribute('readonly', '')
+      field.style.position = 'fixed'
+      field.style.opacity = '0'
+      document.body.appendChild(field)
+      try {
+        field.select()
+        if (!document.execCommand('copy')) throw new Error('copy failed')
+      } finally {
+        field.remove()
+      }
+    }
+    copiedLink.value = true
+    if (copiedLinkTimer !== undefined) clearTimeout(copiedLinkTimer)
+    copiedLinkTimer = setTimeout(() => { copiedLink.value = false }, 2200)
+    notifications.notify('原链接已复制，未生成新的链接。', { type: 'success' })
   } catch {
-    if (mounted && owner === auth.workspaceKey && version === viewVersion) notifications.notify('自动复制失败，请重试。', { type: 'warning' })
-  }
-}
-
-async function copyLink(link: ShareBundleSummary) {
-  if (!link.active || busy.value) return
-  if (link.tokenAvailable) {
-    await retrieveAndCopyLink(link)
-    return
-  }
-  const owner = auth.workspaceKey
-  const version = viewVersion
-  confirming.value = true
-  try {
-    const accepted = await confirmation.ask({
-      title: '生成新的分享地址？',
-      message: '这条链接创建于“再次复制”功能上线前，原始地址无法从历史数据中恢复。',
-      detail: '继续后会生成并复制一个新地址，原地址立即失效；新地址以后可以随时在这里再次复制。',
-      confirmText: '生成并复制', cancelText: '暂不更换', tone: 'warning', icon: 'info',
-    })
-    if (!accepted || !mounted || owner !== auth.workspaceKey || version !== viewVersion) return
-    await retrieveAndCopyLink(link)
-  } finally {
-    if (mounted && version === viewVersion) confirming.value = false
+    copiedLink.value = false
+    notifications.notify('自动复制失败，请手动复制原链接。', { type: 'warning' })
   }
 }
 
@@ -354,18 +350,21 @@ watch([tab, search, typeFilter], ([nextTab, nextSearch], previous) => {
 
 watch(selectableIds, (ids) => { selected.value = selected.value.filter((id) => ids.includes(id)) })
 watch(busy, (value) => { if (value) closeTypeMenu() })
-watch(() => sharing.bundleDetail?.link, (link) => {
-  titleDraft.value = link?.title ?? ''
-  titleTouched.value = false
-  closeAdditionPicker()
+watch([() => sharing.detailLinkId, () => sharing.bundleDetail?.link.title], ([id, title], [previousId]) => {
+  if (!id) {
+    closeAddPicker()
+    detailTitle.value = ''
+    copiedLink.value = false
+    return
+  }
+  if (typeof title === 'string' && (id !== previousId || !detailTitle.value)) detailTitle.value = title
+  if (id !== previousId) titleSaved.value = false
 })
 watch(() => auth.workspaceKey, () => {
   closeTypeMenu()
   viewVersion++
   if (confirming.value) confirmation.cancel()
   confirming.value = false
-  clearTimeout(copiedTimer)
-  copiedLinkId.value = ''
   selected.value = []
   clearFilters()
   load()
@@ -376,8 +375,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', onOutsidePointerdown)
   mounted = false
   viewVersion++
+  if (copiedLinkTimer !== undefined) clearTimeout(copiedLinkTimer)
+  if (titleSavedTimer !== undefined) clearTimeout(titleSavedTimer)
   if (confirming.value) confirmation.cancel()
-  clearTimeout(copiedTimer)
   sharing.reset()
 })
 </script>
@@ -423,7 +423,7 @@ onBeforeUnmount(() => {
           <span class="total-count" aria-live="polite" aria-atomic="true">{{ request.loading ? '正在查找…' : `共 ${currentPage.total} ${isLinks ? '个链接' : '项内容'}` }}</span>
         </div>
         <div v-if="selected.length" class="selection-actions"><span aria-live="polite">已选 {{ selected.length }} 项</span><button class="button button-ghost" type="button" :disabled="busy" @click="selected = []">取消选择</button><button class="button subtle-danger" type="button" :disabled="busy || request.loading" @click="bulkAction"><Unlink :size="15" aria-hidden="true" />{{ isLinks ? '批量撤销' : '批量撤下' }}</button></div>
-        <p v-else class="scope-hint">{{ isLinks ? '有效链接可随时在这里再次复制' : tab === 'mine' ? '撤下仅影响广场，原文和外链保留' : '成员共享 · 按分享时间排序' }}</p>
+        <p v-else class="scope-hint">{{ isLinks ? '完整链接仅在创建时显示一次' : tab === 'mine' ? '撤下仅影响广场，原文和外链保留' : '成员共享 · 按分享时间排序' }}</p>
       </div>
 
       <div class="sharing-results" :aria-busy="request.loading">
@@ -443,7 +443,7 @@ onBeforeUnmount(() => {
           <li v-for="link in sharing.links.items" :key="link.id" class="sharing-row" :class="{ selected: selected.includes(link.id) }">
             <div class="row-leading"><label v-if="!link.revokedAt" class="row-checkbox"><input type="checkbox" :checked="selected.includes(link.id)" :disabled="busy" :aria-label="`选择链接 ${link.title}`" @change="toggle(link.id)" /></label><span v-else class="resource-icon"><Unlink :size="20" aria-hidden="true" /></span></div>
             <div class="row-copy"><div class="row-heading"><button class="resource-title" type="button" @click="sharing.openBundleDetail(link.id)">{{ link.title || '未命名合集' }}</button><span class="link-status" :class="{ available: link.active }"><Check v-if="link.active" :size="12" aria-hidden="true" />{{ linkStatus(link) }}</span><span class="type-label">{{ link.itemCount }} 项内容</span></div><div class="row-meta"><span>创建于 {{ date(link.createdAt) }}</span><span>到期 {{ date(link.expiresAt) }}</span><span v-if="link.revokedAt">撤销于 {{ date(link.revokedAt) }}</span></div></div>
-            <div class="row-actions"><button v-if="link.active" class="button button-ghost small copy-action" type="button" :disabled="busy" :aria-label="`${link.tokenAvailable ? '复制' : '生成并复制'}分享链接 ${link.title}`" @click="copyLink(link)"><Check v-if="copiedLinkId === link.id" :size="15" aria-hidden="true" /><Copy v-else :size="15" aria-hidden="true" />{{ copiedLinkId === link.id ? '已复制' : link.tokenAvailable ? '复制链接' : '生成并复制' }}</button><button class="button button-ghost small" type="button" @click="sharing.openBundleDetail(link.id)">管理内容<ArrowRight :size="15" aria-hidden="true" /></button><button v-if="!link.revokedAt" class="button subtle-danger small" type="button" :disabled="busy" @click="revoke([link])">撤销链接</button></div>
+            <div class="row-actions"><button class="button button-ghost small" type="button" @click="sharing.openBundleDetail(link.id)">管理内容<ArrowRight :size="15" aria-hidden="true" /></button><button v-if="!link.revokedAt" class="button subtle-danger small" type="button" :disabled="busy" @click="revoke([link])">撤销链接</button></div>
           </li>
         </ul>
       </div>
@@ -457,40 +457,54 @@ onBeforeUnmount(() => {
       <SharedContentReader v-else-if="sharing.content" :resource="sharing.content" :image-base-path="`/sharing/pool/${encodeURIComponent(sharing.contentPoolId)}/images`" />
     </AppModal>
 
-    <AppModal v-if="sharing.detailLinkId" :title="sharing.bundleDetail?.link.title || '管理外部链接'" :description="bundleEditable ? '可修改分享标题、追加内容或移除已有内容。' : '此链接已失效，仅可查看原有管理记录。'" wide @close="sharing.closeBundleDetail">
+    <AppModal v-if="sharing.detailLinkId" :title="sharing.bundleDetail?.link.title || '管理外部链接'" description="调整分享标题和内容，原链接会保持不变。" wide @close="sharing.closeBundleDetail">
       <div v-if="sharing.requests.detail.loading" class="loading-state" role="status"><LoaderCircle class="loading-icon" :size="22" aria-hidden="true" />正在加载链接内容…</div>
       <EmptyState v-else-if="sharing.requests.detail.error" title="暂时无法加载链接" :description="sharing.requests.detail.error"><button class="button button-secondary" type="button" @click="sharing.openBundleDetail(sharing.detailLinkId)">重试</button></EmptyState>
       <template v-else-if="sharing.bundleDetail">
-        <div class="bundle-summary"><div><span class="link-status" :class="{ available: sharing.bundleDetail.link.active }">{{ linkStatus(sharing.bundleDetail.link) }}</span><p>{{ sharing.bundleDetail.link.itemCount }} 项可访问内容 · {{ date(sharing.bundleDetail.link.expiresAt) }} 到期</p></div><div class="bundle-summary-actions"><button v-if="sharing.bundleDetail.link.active" class="button button-secondary copy-action" type="button" :disabled="busy" @click="copyLink(sharing.bundleDetail.link)"><Check v-if="copiedLinkId === sharing.bundleDetail.link.id" :size="16" aria-hidden="true" /><Copy v-else :size="16" aria-hidden="true" />{{ copiedLinkId === sharing.bundleDetail.link.id ? '已复制' : sharing.bundleDetail.link.tokenAvailable ? '复制链接' : '生成并复制' }}</button><button v-if="bundleEditable" class="button danger" type="button" :disabled="busy" @click="revoke([sharing.bundleDetail.link])"><Unlink :size="16" aria-hidden="true" />撤销整个链接</button></div></div>
+        <div class="bundle-summary">
+          <div class="bundle-summary__copy"><span class="link-status" :class="{ available: sharing.bundleDetail.link.active }"><Check v-if="sharing.bundleDetail.link.active" :size="12" aria-hidden="true" />{{ linkStatus(sharing.bundleDetail.link) }}</span><p>{{ sharing.bundleDetail.link.itemCount }} 项可访问内容 · {{ date(sharing.bundleDetail.link.expiresAt) }} 到期</p></div>
+          <div class="bundle-summary__actions">
+            <button class="button button-secondary" type="button" :disabled="busy || !detailShareUrl" :title="detailShareUrl ? '复制当前原链接，不会生成新链接' : '当前浏览器没有保存这条链接的 token'" @click="copyLink"><Check v-if="copiedLink" :size="16" aria-hidden="true" /><Copy v-else :size="16" aria-hidden="true" />{{ copiedLink ? '已复制原链接' : '复制原链接' }}</button>
+            <button v-if="!sharing.bundleDetail.link.revokedAt" class="button danger" type="button" :disabled="busy" @click="revoke([sharing.bundleDetail.link])"><Unlink :size="16" aria-hidden="true" />撤销整个链接</button>
+          </div>
+        </div>
+        <p v-if="!detailShareUrl" class="bundle-token-note" role="status">这条链接是在当前版本之前创建的，浏览器没有保存原始 token，无法在管理页重新找回；请从创建分享时的窗口复制。重新生成会产生新链接，也不会自动替换原链接。</p>
 
-        <form class="bundle-title-form" @submit.prevent="saveTitle">
-          <label for="share-bundle-title"><span>分享标题</span><small>外部访问页面会同步显示新标题</small></label>
-          <div><input id="share-bundle-title" v-model="titleDraft" type="text" maxlength="200" :readonly="!bundleEditable" :aria-invalid="titleTouched && !!titleError" aria-describedby="share-bundle-title-feedback" @blur="titleTouched = true" /><button v-if="bundleEditable" class="button button-secondary" type="submit" :disabled="busy || !titleChanged || !!titleError"><Save :size="16" aria-hidden="true" />保存标题</button></div>
-          <p id="share-bundle-title-feedback" :class="{ error: titleTouched && titleError }" :role="titleTouched && titleError ? 'alert' : undefined">{{ titleTouched && titleError ? titleError : `${titleDraft.trim().length} / 200` }}</p>
+        <form class="bundle-title-editor" @submit.prevent="saveTitle">
+          <div class="bundle-section-heading"><div><h3>分享标题</h3><p>公开分享页面会同步显示最新标题</p></div><span>{{ detailTitle.length }} / 200</span></div>
+          <div class="bundle-title-control"><label class="sr-only" for="bundle-title-input">分享标题</label><input id="bundle-title-input" v-model="detailTitle" maxlength="200" aria-label="分享标题" :disabled="busy" /><button class="button button-primary save-title-button" type="submit" :disabled="busy || !detailTitle.trim() || !titleChanged"><LoaderCircle v-if="sharing.busy" :size="16" class="spin" aria-hidden="true" /><Check v-else-if="titleSaved" :size="16" aria-hidden="true" />{{ titleSaved ? '已保存' : '保存标题' }}</button></div>
         </form>
 
-        <div class="bundle-section-heading"><div><strong>链接内容</strong><span>内容随后续保存同步更新；已移除的同一项不能再次加入。</span></div><button v-if="bundleEditable" class="button button-primary" type="button" :aria-expanded="showAddItems" aria-controls="bundle-addition-panel" :disabled="busy" @click="showAddItems ? closeAdditionPicker() : openAdditionPicker()"><X v-if="showAddItems" :size="16" aria-hidden="true" /><Plus v-else :size="16" aria-hidden="true" />{{ showAddItems ? '收起选择' : '添加内容' }}</button></div>
-
-        <section v-if="showAddItems" id="bundle-addition-panel" class="addition-panel" aria-label="添加知识内容">
-          <label class="addition-search"><SearchIcon :size="17" aria-hidden="true" /><span class="sr-only">搜索可添加的知识内容</span><input v-model="additionQuery" type="search" placeholder="搜索文章、代码片段或流程图" /></label>
-          <div v-if="pickerLoading && !additionCandidates.length" class="addition-state" role="status"><LoaderCircle class="loading-icon" :size="18" aria-hidden="true" />正在读取知识库…</div>
-          <div v-else-if="pickerError && !additionCandidates.length" class="addition-state error" role="alert"><AlertCircle :size="18" aria-hidden="true" /><span>{{ pickerError }}</span><button class="button button-secondary small" type="button" :disabled="pickerLoading" @click="loadPickerSources(true)">重试</button></div>
-          <p v-else-if="!additionCandidates.length" class="addition-state">知识库中的内容都已加入过这个链接。</p>
-          <p v-else-if="!filteredAdditionCandidates.length" class="addition-state">没有与“{{ additionQuery.trim() }}”匹配的可添加内容。</p>
-          <ul v-else class="addition-list" aria-label="可添加的知识内容">
-            <li v-for="item in filteredAdditionCandidates" :key="resourceKey(item)"><label><input type="checkbox" :checked="additionSelection.includes(resourceKey(item))" :disabled="busy || (!additionSelection.includes(resourceKey(item)) && additionSelection.length >= additionLimit)" @change="toggleAddition(item)" /><span class="resource-icon"><component :is="typeIcons[item.type]" :size="18" aria-hidden="true" /></span><span><strong>{{ item.title || '未命名内容' }}</strong><small>{{ typeLabels[item.type] }} · {{ item.detail }}</small></span></label></li>
-          </ul>
-          <footer><span :class="{ error: additionOverLimit }">已选 {{ additionSelection.length }} 项 · 还可添加 {{ additionLimit }} 项</span><div><button class="button button-ghost" type="button" :disabled="busy" @click="closeAdditionPicker">取消</button><button class="button button-primary" type="button" :disabled="busy || !additionSelection.length || additionOverLimit" @click="addSelectedItems"><LoaderCircle v-if="busy" class="loading-icon" :size="16" aria-hidden="true" /><Plus v-else :size="16" aria-hidden="true" />{{ busy ? '正在添加…' : `添加选中的 ${additionSelection.length} 项` }}</button></div></footer>
+        <section class="bundle-content-manager" aria-labelledby="bundle-content-title">
+          <div class="bundle-section-heading bundle-section-heading--content"><div><h3 id="bundle-content-title">链接内容</h3><p>内容会随作者后续保存同步更新，移除后不能重新加入。</p></div><button class="button button-primary" type="button" :disabled="busy || !sharing.bundleDetail.link.active" @click="openAddPicker"><Plus :size="17" aria-hidden="true" />添加内容</button></div>
+          <div v-if="addPickerOpen" class="add-content-panel">
+            <div class="add-content-panel__header"><div><strong>选择要添加的内容</strong><p>按一级目录浏览，勾选后一次性加入这条分享。</p></div><button class="icon-btn" type="button" aria-label="关闭添加内容" @click="closeAddPicker"><X :size="18" aria-hidden="true" /></button></div>
+            <label class="add-content-search"><Search :size="17" aria-hidden="true" /><span class="sr-only">搜索可添加内容</span><input ref="addSearchInput" v-model="addSearch" type="search" placeholder="搜索文章、代码片段或流程图" autocomplete="off" /></label>
+            <div class="add-content-meta"><span>可添加 {{ addableCount }} 项</span><strong>已选 {{ addSelectionCount }} 项</strong></div>
+            <div v-if="!filteredAddableResources.length" class="add-content-empty">{{ addableCount ? '没有匹配的内容，换个关键词试试。' : '没有可添加的内容，当前知识库内容都已在这条链接中。' }}</div>
+            <ul v-else class="content-tree" role="tree" aria-label="可添加内容目录">
+              <li v-for="group in addContentGroups" :key="group.id" class="content-tree__group" role="treeitem" :aria-expanded="isAddGroupExpanded(group.id)">
+                <div class="content-tree__group-row">
+                  <button class="content-tree__toggle" type="button" :aria-label="`${isAddGroupExpanded(group.id) ? '收起' : '展开'}${group.label}`" :aria-expanded="isAddGroupExpanded(group.id)" @click="toggleAddGroupExpanded(group.id)"><ChevronDown :size="16" aria-hidden="true" /></button>
+                  <label class="tree-check tree-check--group"><input type="checkbox" :checked="groupSelectionState(group).checked" :indeterminate="groupSelectionState(group).indeterminate" :disabled="!group.children.length" :aria-label="`选择目录 ${group.label}`" @change="toggleAddGroup(group)" /><Folder :size="17" aria-hidden="true" /><span>{{ group.label }}</span><small>{{ group.children.length }} 项</small></label>
+                </div>
+                <ul v-show="isAddGroupExpanded(group.id)" class="content-tree__children" role="group">
+                  <li v-for="item in group.children" :key="item.key" role="treeitem"><label class="tree-check tree-check--item"><input type="checkbox" :checked="addSelection.includes(item.key)" :aria-label="`选择 ${item.title}`" @change="toggleAddItem(item)" /><span class="tree-check__icon"><component :is="typeIcons[item.type]" :size="16" aria-hidden="true" /></span><span class="tree-check__copy"><strong>{{ item.title }}</strong><small>{{ item.meta }}</small></span></label></li>
+                </ul>
+              </li>
+            </ul>
+            <div class="add-content-panel__footer"><span>勾选一级目录可全选该目录内容</span><div><button class="button button-ghost" type="button" @click="closeAddPicker">取消</button><button class="button button-primary" type="button" :disabled="busy || !addSelectionCount" @click="saveAddedItems"><Plus :size="16" aria-hidden="true" />添加选中的 {{ addSelectionCount }} 项</button></div></div>
+          </div>
+          <ul class="bundle-items" aria-label="链接包含的内容"><li v-for="item in sharing.bundleDetail.items" :key="item.id"><span class="resource-icon"><component :is="typeIcons[item.resourceType]" :size="19" aria-hidden="true" /></span><div><strong>{{ item.title || '未命名内容' }}</strong><p>{{ typeLabels[item.resourceType] }} · {{ item.removedAt ? '已从链接移除' : item.available ? '可访问' : '原文不可用' }}</p></div><button v-if="!item.removedAt && !sharing.bundleDetail.link.revokedAt" class="button subtle-danger small" type="button" :disabled="busy" :aria-label="`从此链接移除 ${item.title}`" @click="removeItem(item)"><X :size="15" aria-hidden="true" />移除</button></li></ul>
         </section>
-
-        <ul class="bundle-items" aria-label="链接包含的内容"><li v-for="item in sharing.bundleDetail.items" :key="item.id"><span class="resource-icon"><component :is="typeIcons[item.resourceType]" :size="19" aria-hidden="true" /></span><div><strong>{{ item.title || '未命名内容' }}</strong><p>{{ typeLabels[item.resourceType] }} · {{ item.removedAt ? '已从链接移除' : item.available ? '可访问' : '原文不可用' }}</p></div><button v-if="!item.removedAt && bundleEditable" class="button subtle-danger small" type="button" :disabled="busy" :aria-label="`从此链接移除 ${item.title}`" @click="removeItem(item)"><X :size="15" aria-hidden="true" />移除</button></li></ul>
-        <p class="bundle-note">撤销链接或移除内容后，已被接收者保存的内容无法收回。</p>
+        <p class="bundle-note">内容随作者后续保存同步更新。撤销或移除后，已被接收者保存的内容无法收回。</p>
       </template>
     </AppModal>
   </section>
 </template>
 
 <style scoped>
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .sharing-page { min-width: 0; width: 100%; max-width: none; padding-top: 12px; padding-bottom: 16px; }
 .sharing-workspace { display: flex; flex-direction: column; min-width: 0; min-height: max(620px, calc(100svh - 100px)); overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-sm); }
 .sharing-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 18px; border-bottom: 1px solid var(--border); background: linear-gradient(112deg, color-mix(in srgb, var(--accent-bg) 30%, var(--panel)) 0%, var(--panel) 46%); }
@@ -562,7 +576,6 @@ input[type='checkbox'] { width: 16px; height: 16px; flex-shrink: 0; margin: 0; a
 .row-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 5px; color: var(--muted); font-size: var(--font-2xs); overflow-wrap: anywhere; }
 .row-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
 .row-actions .button { padding-inline: 10px; font-size: var(--font-xs); }
-.copy-action { color: var(--accent); }
 .subtle-danger { color: var(--danger); background: transparent; border-color: transparent; }
 .subtle-danger:hover:not(:disabled) { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, transparent); }
 .danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, var(--panel)); }
@@ -570,42 +583,57 @@ input[type='checkbox'] { width: 16px; height: 16px; flex-shrink: 0; margin: 0; a
 .loading-icon { animation: sharing-spin 1s linear infinite; }
 .sharing-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--border); color: var(--muted); font-size: var(--font-xs); }
 .sharing-pagination > div { display: flex; gap: 8px; }
-.bundle-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 20px; }
+.bundle-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 20px; }
+.bundle-summary__copy { min-width: 0; }
 .bundle-summary p { margin: 9px 0 0; color: var(--muted); font-size: var(--font-sm); }
-.bundle-summary-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-.bundle-title-form { display: grid; gap: 9px; margin-bottom: 22px; padding: 15px; border: 1px solid var(--border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface-sunken) 48%, var(--panel)); }
-.bundle-title-form > label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--text); font-size: var(--font-xs); font-weight: 680; }
-.bundle-title-form > label small { color: var(--muted); font-size: var(--font-2xs); font-weight: 450; }
-.bundle-title-form > div { display: flex; align-items: center; gap: 9px; }
-.bundle-title-form input { width: 100%; min-width: 0; min-height: 42px; padding: 9px 11px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 9px; outline: 0; background: var(--panel); font: inherit; }
-.bundle-title-form input[readonly] { color: var(--muted); background: var(--surface-sunken); }
-.bundle-title-form input:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.bundle-title-form input[aria-invalid='true'] { border-color: var(--danger); }
-.bundle-title-form > p { min-height: 18px; margin: 0; color: var(--muted); font-size: var(--font-2xs); text-align: right; }
-.bundle-title-form > p.error { color: var(--danger); text-align: left; }
-.bundle-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
-.bundle-section-heading > div { display: grid; gap: 4px; min-width: 0; }
-.bundle-section-heading strong { color: var(--text); font-size: var(--font-sm); }
-.bundle-section-heading span { color: var(--muted); font-size: var(--font-2xs); line-height: 1.55; }
-.addition-panel { display: grid; gap: 12px; margin-bottom: 16px; padding: 14px; border: 1px solid var(--accent-border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent-bg) 32%, var(--panel)); }
-.addition-search { min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 11px; color: var(--muted); border: 1px solid var(--border-strong); border-radius: 9px; background: var(--panel); }
-.addition-search:focus-within { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.addition-search input { width: 100%; min-width: 0; padding: 9px 0; color: var(--text); border: 0; outline: 0; background: transparent; font: inherit; }
-.addition-list { max-height: 300px; overflow-y: auto; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); list-style: none; }
-.addition-list li + li { border-top: 1px solid var(--border); }
-.addition-list label { min-height: 58px; display: grid; grid-template-columns: 20px 36px minmax(0, 1fr); align-items: center; gap: 10px; padding: 8px 11px; cursor: pointer; }
-.addition-list label:hover { background: var(--surface-sunken); }
-.addition-list label > span:last-child { min-width: 0; display: grid; gap: 3px; }
-.addition-list strong, .addition-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.addition-list strong { color: var(--text); font-size: var(--font-xs); }
-.addition-list small { color: var(--muted); font-size: var(--font-2xs); }
-.addition-state { min-height: 82px; display: flex; align-items: center; justify-content: center; gap: 9px; margin: 0; padding: 14px; color: var(--muted); font-size: var(--font-xs); text-align: center; }
-.addition-state.error { color: var(--danger); }
-.addition-panel footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.addition-panel footer > span { color: var(--muted); font-size: var(--font-2xs); }
-.addition-panel footer > span.error { color: var(--danger); }
-.addition-panel footer > div { display: flex; gap: 7px; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.bundle-summary__actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.bundle-summary__actions .button { min-height: 44px; }
+.bundle-token-note { margin: -4px 0 18px; padding: 11px 13px; color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 26%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--warning) 8%, var(--panel)); font-size: var(--font-xs); line-height: 1.65; }
+.bundle-title-editor, .bundle-content-manager { margin-top: 18px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface-sunken) 45%, var(--panel)); }
+.bundle-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.bundle-section-heading h3 { margin: 0; color: var(--text); font-size: var(--font-sm); font-weight: 760; }
+.bundle-section-heading p { margin: 5px 0 0; color: var(--muted); font-size: var(--font-xs); line-height: 1.6; }
+.bundle-section-heading > span { flex: 0 0 auto; color: var(--muted); font-size: var(--font-2xs); font-variant-numeric: tabular-nums; }
+.bundle-title-control { display: flex; align-items: stretch; gap: 10px; margin-top: 14px; }
+.bundle-title-control input { width: 100%; min-width: 0; min-height: 44px; padding: 0 13px; color: var(--text); border: 1px solid var(--border-strong); border-radius: 9px; outline: 0; background: var(--panel); font: inherit; }
+.bundle-title-control input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.save-title-button { min-width: 112px; min-height: 44px !important; }
+.bundle-section-heading--content { align-items: center; }
+.bundle-section-heading--content > .button { flex: 0 0 auto; min-height: 42px; }
+.add-content-panel { display: grid; gap: 12px; margin-top: 16px; padding: 14px; border: 1px solid var(--accent-border); border-radius: 12px; background: var(--panel); box-shadow: 0 8px 22px rgba(34,62,120,.08); }
+.add-content-panel__header, .add-content-panel__footer, .add-content-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.add-content-panel__header strong { display: block; color: var(--text); font-size: var(--font-sm); }
+.add-content-panel__header p { margin: 4px 0 0; color: var(--muted); font-size: var(--font-xs); }
+.add-content-search { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 12px; color: var(--muted); border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface-sunken); }
+.add-content-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.add-content-search input { width: 100%; min-width: 0; padding: 10px 0; color: var(--text); border: 0; outline: 0; background: transparent; font: inherit; }
+.add-content-search input::placeholder { color: var(--muted); }
+.add-content-meta { color: var(--muted); font-size: var(--font-xs); }
+.add-content-meta strong { color: var(--accent); font-weight: 700; }
+.add-content-empty { padding: 30px 16px; color: var(--muted); border: 1px dashed var(--border-strong); border-radius: 9px; background: var(--surface-sunken); font-size: var(--font-xs); text-align: center; }
+.content-tree { max-height: 360px; overflow: auto; margin: 0; padding: 4px; border: 1px solid var(--border); border-radius: 10px; list-style: none; scrollbar-gutter: stable; }
+.content-tree__group + .content-tree__group { border-top: 1px solid var(--border); }
+.content-tree__group-row { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: center; min-height: 48px; }
+.content-tree__toggle { width: 34px; height: 40px; display: grid; place-items: center; padding: 0; color: var(--muted); border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.content-tree__toggle:hover { color: var(--text); background: var(--surface-raised); }
+.content-tree__toggle svg { transition: transform var(--motion-fast) var(--ease-standard); }
+.content-tree__group[aria-expanded='true'] .content-tree__toggle svg { transform: rotate(0); }
+.content-tree__group[aria-expanded='false'] .content-tree__toggle svg { transform: rotate(-90deg); }
+.tree-check { min-width: 0; display: flex; align-items: center; gap: 9px; cursor: pointer; }
+.tree-check input { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--accent); }
+.tree-check--group { min-height: 44px; padding: 5px 9px 5px 0; color: var(--text); }
+.tree-check--group svg { flex: 0 0 auto; color: var(--accent); }
+.tree-check--group span { min-width: 0; overflow: hidden; font-size: var(--font-xs); font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
+.tree-check--group small { margin-left: auto; color: var(--muted); font-size: var(--font-2xs); }
+.tree-check--item { min-height: 48px; margin-left: 34px; padding: 6px 9px; border-radius: 8px; }
+.tree-check--item:hover { background: var(--surface-sunken); }
+.tree-check__icon { width: 28px; height: 28px; display: grid; flex: 0 0 28px; place-items: center; color: var(--accent); border-radius: 7px; background: var(--accent-bg); }
+.tree-check__copy { min-width: 0; display: grid; gap: 2px; }
+.tree-check__copy strong, .tree-check__copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-check__copy strong { color: var(--text); font-size: var(--font-xs); font-weight: 600; }
+.tree-check__copy small { color: var(--muted); font-size: var(--font-2xs); }
+.add-content-panel__footer { align-items: flex-end; padding-top: 2px; color: var(--muted); font-size: var(--font-2xs); }
+.add-content-panel__footer > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .bundle-items { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }
 .bundle-items li { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-md); }
 .bundle-items strong { overflow-wrap: anywhere; font-size: var(--font-sm); }
@@ -645,14 +673,17 @@ input[type='checkbox'] { width: 16px; height: 16px; flex-shrink: 0; margin: 0; a
   .sharing-pagination { align-items: flex-start; flex-direction: column; padding: 12px; gap: 8px; }
   .sharing-pagination > div { width: 100%; }
   .sharing-pagination .button { flex: 1; }
-  .bundle-summary { align-items: flex-start; flex-direction: column; }
-  .bundle-summary-actions { width: 100%; align-items: stretch; flex-direction: column; }
-  .bundle-summary .button { width: 100%; }
-  .bundle-title-form > label, .bundle-title-form > div, .bundle-section-heading, .addition-panel footer { align-items: stretch; flex-direction: column; }
-  .bundle-title-form > label { display: grid; }
-  .bundle-title-form .button, .bundle-section-heading .button, .addition-panel footer .button { width: 100%; }
-  .addition-panel footer > div { width: 100%; }
-  .addition-panel footer > div .button { flex: 1; }
+  .bundle-summary { flex-direction: column; }
+  .bundle-summary__actions { width: 100%; justify-content: stretch; }
+  .bundle-summary__actions .button { flex: 1; }
+  .bundle-title-editor, .bundle-content-manager { padding: 14px; }
+  .bundle-title-control { flex-direction: column; }
+  .save-title-button { width: 100%; }
+  .bundle-section-heading--content { align-items: flex-start; flex-direction: column; }
+  .bundle-section-heading--content > .button { width: 100%; }
+  .add-content-panel__footer { align-items: stretch; flex-direction: column; }
+  .add-content-panel__footer > div { justify-content: stretch; }
+  .add-content-panel__footer .button { flex: 1; }
   .bundle-items li { grid-template-columns: 32px minmax(0, 1fr); padding: 12px; gap: 10px; }
   .bundle-items .resource-icon { width: 32px; height: 38px; }
   .bundle-items .button { grid-column: 2; justify-self: start; min-height: 44px; }

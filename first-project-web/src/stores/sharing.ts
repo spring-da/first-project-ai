@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { onScopeDispose, reactive, ref, watch } from 'vue'
 import * as api from '../services/sharing.ts'
-import type { ShareBundleDetail, ShareBundleQuery, ShareBundleSummary, ShareBundleToken, SharedContent, SharedPoolEntry, SharedPoolQuery, SharePage, ShareReference } from '../types/sharing.ts'
+import type { ShareBundleDetail, ShareBundleQuery, ShareBundleSummary, ShareReference, SharedContent, SharedPoolEntry, SharedPoolQuery, SharePage } from '../types/sharing.ts'
 import { useAuthStore } from './auth.ts'
 import { useNotificationStore } from './notifications.ts'
 
@@ -126,17 +126,35 @@ export const useSharingStore = defineStore('sharing', () => {
     return read('detail', (signal) => api.getShareBundle(id, signal), (value) => { bundleDetail.value = value })
   }
 
-  async function mutate<T>(action: () => Promise<T>, update: (result: T) => Promise<unknown>, message: string) {
+  async function updateTitle(linkId: string, title: string) {
+    if (!title.trim() || busy.value) return false
+    return mutate(() => api.updateShareBundleTitle(linkId, title.trim()), async () => {
+      if (detailLinkId.value === linkId && bundleDetail.value) bundleDetail.value.link.title = title.trim()
+      links.value.items = links.value.items.map((entry) => entry.id === linkId ? { ...entry, title: title.trim() } : entry)
+    }, '分享标题已保存')
+  }
+
+  async function addItems(linkId: string, references: ShareReference[]) {
+    const selected = [...new Map(references.map((item) => [`${item.type}:${item.id}`, item])).values()]
+    if (!selected.length || busy.value) return false
+    cancel('links')
+    if (detailLinkId.value === linkId) cancel('detail')
+    return mutate(() => api.addShareBundleItems(linkId, selected), async () => {
+      await Promise.all([loadLinks(), detailLinkId.value === linkId ? openBundleDetail(linkId) : Promise.resolve()])
+    }, `已向分享链接添加 ${selected.length} 项内容`)
+  }
+
+  async function mutate(action: () => Promise<void>, update: () => Promise<unknown>, message: string) {
     if (busy.value || !auth.workspaceKey) return false
     const owner = auth.workspaceKey
     const version = lifetime
     const current = () => owner === auth.workspaceKey && version === lifetime
     busy.value = true
     try {
-      const result = await action()
+      await action()
       if (!current()) return false
       notifications.notify(message, { type: 'success' })
-      await update(result)
+      await update()
       return current()
     } catch (cause) {
       if (current()) notifications.notify(cause instanceof Error ? cause.message : '操作失败，请重试', { type: 'error' })
@@ -175,51 +193,6 @@ export const useSharingStore = defineStore('sharing', () => {
     }, `已撤销 ${selected.length} 个外部链接`)
   }
 
-  async function getLinkToken(linkId: string): Promise<ShareBundleToken | null> {
-    if (!linkId || busy.value || !auth.workspaceKey) return null
-    const owner = auth.workspaceKey
-    const version = lifetime
-    const current = () => owner === auth.workspaceKey && version === lifetime
-    busy.value = true
-    try {
-      const result = await api.getShareBundleToken(linkId)
-      if (!current()) return null
-      if (result.regenerated) {
-        links.value.items = links.value.items.map((entry) => entry.id === linkId ? { ...entry, tokenAvailable: true } : entry)
-        if (detailLinkId.value === linkId && bundleDetail.value) bundleDetail.value.link.tokenAvailable = true
-      }
-      return result
-    } catch (cause) {
-      if (current()) notifications.notify(cause instanceof Error ? cause.message : '分享链接读取失败，请重试', { type: 'error' })
-      return null
-    } finally {
-      if (current()) busy.value = false
-    }
-  }
-
-  async function renameLink(linkId: string, title: string) {
-    const nextTitle = title.trim()
-    if (!linkId || !nextTitle || nextTitle.length > 200 || busy.value) return false
-    cancel('links')
-    return mutate(() => api.renameShareBundle(linkId, nextTitle), async (summary) => {
-      links.value.items = links.value.items.map((entry) => entry.id === linkId ? summary : entry)
-      if (detailLinkId.value === linkId && bundleDetail.value) bundleDetail.value.link = summary
-      await loadLinks()
-    }, '外部链接标题已更新')
-  }
-
-  async function addItems(linkId: string, additions: ShareReference[]) {
-    const selected = [...new Map(additions.map((item) => [`${item.type}:${item.id}`, item])).values()]
-    if (!linkId || !selected.length || selected.length > 100 || busy.value) return false
-    cancel('links')
-    if (detailLinkId.value === linkId) cancel('detail')
-    return mutate(() => api.addShareBundleItems(linkId, selected), async (detail) => {
-      if (detailLinkId.value === linkId) bundleDetail.value = detail
-      links.value.items = links.value.items.map((entry) => entry.id === linkId ? detail.link : entry)
-      await loadLinks()
-    }, `已向外部链接添加 ${selected.length} 项内容`)
-  }
-
   async function removeItem(linkId: string, itemId: string) {
     if (busy.value) return false
     cancel('links')
@@ -237,5 +210,5 @@ export const useSharingStore = defineStore('sharing', () => {
   onScopeDispose(reset)
   return { pool, links, content, contentPoolId, bundleDetail, detailLinkId, requests, busy,
     loadPool, loadLinks, searchPool, searchLinks, openPoolContent, closePoolContent, openBundleDetail, closeBundleDetail,
-    withdraw, revoke, getLinkToken, renameLink, addItems, removeItem, cancelLists, reset }
+    updateTitle, addItems, withdraw, revoke, removeItem, cancelLists, reset }
 })

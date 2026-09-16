@@ -6,7 +6,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "share_bundle_items", uniqueConstraints =
-        @UniqueConstraint(name = "uk_bundle_resource", columnNames = {"bundle_id", "resource_type", "resource_id"}))
+@UniqueConstraint(name = "uk_bundle_resource", columnNames = {"bundle_id", "resource_type", "resource_id"}))
 public class ShareBundleItemEntity extends BaseEntity {
     @Column(name = "bundle_id", nullable = false, length = 36) private String bundleId;
     @Enumerated(EnumType.STRING) @Column(name = "resource_type", nullable = false, length = 20) private ResourceType resourceType;

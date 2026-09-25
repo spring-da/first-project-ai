@@ -98,12 +98,7 @@ class SharingIntegrationTest {
         assertThat(token).hasSize(43);
         mvc.perform(get("/api/v1/sharing/links").with(jwt().jwt(j -> j.subject(owner))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].token").doesNotExist())
-                .andExpect(jsonPath("$.items[0].tokenAvailable").value(true));
-        mvc.perform(post("/api/v1/sharing/links/{id}/token", id).with(jwt().jwt(j -> j.subject(owner))))
-                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.token").value(token)).andExpect(jsonPath("$.regenerated").value(false));
-        mvc.perform(post("/api/v1/sharing/links/{id}/token", id).with(jwt().jwt(j -> j.subject(reader))))
-                .andExpect(status().isNotFound());
+                .andExpect(jsonPath("$.items[0].tokenAvailable").doesNotExist());
         String list = mvc.perform(get("/api/v1/public/share-bundles/{token}", token))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.items.length()").value(3)).andExpect(jsonPath("$.items[0].content").doesNotExist())
@@ -126,33 +121,22 @@ class SharingIntegrationTest {
         mvc.perform(get("/api/v1/public/share-bundles/{token}/items/{item}", token, item)).andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/public/share-bundles/{token}", token)).andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2));
         mvc.perform(delete("/api/v1/sharing/links/{id}", id).with(jwt().jwt(j -> j.subject(owner)))).andExpect(status().isNoContent());
-        mvc.perform(post("/api/v1/sharing/links/{id}/token", id).with(jwt().jwt(j -> j.subject(owner))))
-                .andExpect(status().isConflict());
         mvc.perform(get("/api/v1/public/share-bundles/{token}", token)).andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/sharing/pool").with(jwt().jwt(j -> j.subject(reader)))).andExpect(jsonPath("$.total").value(3));
         mvc.perform(get("/api/v1/sharing/links").with(jwt().jwt(j -> j.subject(owner))))
                 .andExpect(jsonPath("$.items[0].token").doesNotExist()).andExpect(jsonPath("$.items[0].active").value(false));
     }
 
-    @Test void legacyBundleGetsAnExplicitReplacementTokenOnFirstCopy() throws Exception {
+    @Test void linkManagementDoesNotExposeOrRegenerateToken() throws Exception {
         String created = createLink("[" + ref("MARKDOWN", document) + "]");
-        String id = JsonPath.read(created, "$.id"), oldToken = JsonPath.read(created, "$.token");
-        jdbc.update("UPDATE share_bundles SET token_ciphertext = NULL WHERE id = ?", id);
-        entities.clear();
+        String id = JsonPath.read(created, "$.id"), token = JsonPath.read(created, "$.token");
 
         mvc.perform(get("/api/v1/sharing/links").with(jwt().jwt(j -> j.subject(owner))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].tokenAvailable").value(false));
-        String replacement = mvc.perform(post("/api/v1/sharing/links/{id}/token", id).with(jwt().jwt(j -> j.subject(owner))))
-                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.regenerated").value(true)).andExpect(jsonPath("$.token").isString())
-                .andReturn().getResponse().getContentAsString();
-        String newToken = JsonPath.read(replacement, "$.token");
-        assertThat(newToken).hasSize(43).isNotEqualTo(oldToken);
-        mvc.perform(get("/api/v1/public/share-bundles/{token}", oldToken)).andExpect(status().isNotFound());
-        mvc.perform(get("/api/v1/public/share-bundles/{token}", newToken)).andExpect(status().isOk());
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].token").doesNotExist())
+                .andExpect(jsonPath("$.items[0].tokenAvailable").doesNotExist());
         mvc.perform(post("/api/v1/sharing/links/{id}/token", id).with(jwt().jwt(j -> j.subject(owner))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.token").value(newToken))
-                .andExpect(jsonPath("$.regenerated").value(false));
+                .andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/public/share-bundles/{token}", token)).andExpect(status().isOk());
     }
 
     @Test void liveBundleCanBeRenamedAndExtendedOnlyByItsOwner() throws Exception {
@@ -160,16 +144,18 @@ class SharingIntegrationTest {
         String id = JsonPath.read(created, "$.id"), token = JsonPath.read(created, "$.token");
         mvc.perform(patch("/api/v1/sharing/links/{id}", id).with(jwt().jwt(j -> j.subject(owner)))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"  Updated collection  \"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Updated collection"));
+                .andExpect(status().isNoContent());
         mvc.perform(post("/api/v1/sharing/links/{id}/items", id).with(jwt().jwt(j -> j.subject(owner)))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"items\":[" + ref("SNIPPET", snippet) + "]}"))
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.link.title").value("Updated collection"))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/sharing/links/{id}", id).with(jwt().jwt(j -> j.subject(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.link.title").value("Updated collection"))
                 .andExpect(jsonPath("$.link.itemCount").value(2)).andExpect(jsonPath("$.items.length()").value(2));
         mvc.perform(get("/api/v1/public/share-bundles/{token}", token)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("Updated collection")).andExpect(jsonPath("$.items.length()").value(2));
         mvc.perform(post("/api/v1/sharing/links/{id}/items", id).with(jwt().jwt(j -> j.subject(owner)))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"items\":[" + ref("SNIPPET", snippet) + "]}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isConflict());
         mvc.perform(patch("/api/v1/sharing/links/{id}", id).with(jwt().jwt(j -> j.subject(reader)))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"Foreign edit\"}"))
                 .andExpect(status().isNotFound());
@@ -273,8 +259,8 @@ class SharingIntegrationTest {
         jdbc.update("UPDATE share_bundles SET expires_at = ? WHERE id = ?", java.sql.Timestamp.from(Instant.now().minusSeconds(1)), id);
         entities.clear();
         mvc.perform(get("/api/v1/public/share-bundles/{token}", token)).andExpect(status().isNotFound());
-        mvc.perform(post("/api/v1/sharing/links/{id}/token", id).with(jwt().jwt(j -> j.subject(owner))))
-                .andExpect(status().isConflict());
+        mvc.perform(get("/api/v1/sharing/links/{id}", id).with(jwt().jwt(j -> j.subject(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.link.active").value(false));
         String liveToken = JsonPath.read(createLink(mixed()), "$.token");
         users.deleteById(owner); users.flush(); entities.clear();
         mvc.perform(get("/api/v1/public/share-bundles/{token}", liveToken)).andExpect(status().isNotFound());

@@ -1,6 +1,6 @@
 import { apiRequest, jsonBody } from './api.ts'
 import type {
-  PublicShareBundle, ShareBundleDetail, ShareBundleQuery, ShareBundleSecret, ShareBundleSummary, ShareBundleToken,
+  PublicShareBundle, ShareBundleDetail, ShareBundleQuery, ShareBundleSecret, ShareBundleSummary,
   SharedContent, SharedPoolEntry, SharedPoolQuery, SharePage, ShareReference,
 } from '../types/sharing.ts'
 
@@ -48,18 +48,12 @@ export function getShareBundle(id: string, signal?: AbortSignal) {
   return apiRequest<ShareBundleDetail>(`/sharing/links/${segment(id)}`, { signal, cache: 'no-store' })
 }
 
-export function getShareBundleToken(id: string) {
-  return apiRequest<ShareBundleToken>(`/sharing/links/${segment(id)}/token`, { method: 'POST', cache: 'no-store' })
+export function updateShareBundleTitle(linkId: string, title: string) {
+  return apiRequest<void>(`/sharing/links/${segment(linkId)}`, { method: 'PATCH', body: jsonBody({ title }) })
 }
 
-export function renameShareBundle(id: string, title: string) {
-  return apiRequest<ShareBundleSummary>(`/sharing/links/${segment(id)}`, {
-    method: 'PATCH', body: jsonBody({ title }),
-  })
-}
-
-export function addShareBundleItems(id: string, items: ShareReference[]) {
-  return apiRequest<ShareBundleDetail>(`/sharing/links/${segment(id)}/items`, {
+export function addShareBundleItems(linkId: string, items: ShareReference[]) {
+  return apiRequest<void>(`/sharing/links/${segment(linkId)}/items`, {
     method: 'POST', body: jsonBody({ items: references(items) }),
   })
 }

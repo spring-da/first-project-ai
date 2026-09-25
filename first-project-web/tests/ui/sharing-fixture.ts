@@ -13,7 +13,6 @@ type FixtureSources = {
 type PoolRecord = { id: string; ownerId: string; reference: ShareReference; sharedAt: string; withdrawn: boolean }
 type LinkRecord = {
   id: string; ownerId: string; token: string; title: string; expiresAt: string; createdAt: string; revokedAt: string | null
-  tokenAvailable: boolean
   items: Array<{ id: string; reference: ShareReference; removedAt: string | null }>
 }
 type FailureKind = 'list' | 'content' | 'images'
@@ -85,9 +84,9 @@ export function createSharingFixture(options: FixtureOptions) {
       addPool(ownerId, reference)
     }
   }
-  function addLink(ownerId: string, title: string, selected: ShareReference[], expiresAt: string, token: string, tokenAvailable = true) {
+  function addLink(ownerId: string, title: string, selected: ShareReference[], expiresAt: string, token: string) {
     const record: LinkRecord = {
-      id: `fixture-bundle-${++sequence}`, ownerId, token, title, expiresAt, createdAt: new Date().toISOString(), revokedAt: null, tokenAvailable,
+      id: `fixture-bundle-${++sequence}`, ownerId, token, title, expiresAt, createdAt: new Date().toISOString(), revokedAt: null,
       items: selected.map((reference) => ({ id: `fixture-bundle-item-${++sequence}`, reference, removedAt: null })),
     }
     links.unshift(record)
@@ -96,7 +95,7 @@ export function createSharingFixture(options: FixtureOptions) {
   const expirySeconds = Math.max(1, Math.min(3600, Number(options.scenario.get('bundle-expiry-seconds')) || 0))
   const expiry = options.scenario.has('expired-bundle') ? Date.now() - 1000
     : options.scenario.has('bundle-expiry-seconds') ? Date.now() + expirySeconds * 1000 : Date.now() + 7 * 86400000
-  addLink('ui-fixture', '开发知识精选 · 文章、代码与记录', references('ui-fixture'), new Date(expiry).toISOString(), fixtureBundleToken, false)
+  addLink('ui-fixture', '开发知识精选 · 文章、代码与记录', references('ui-fixture'), new Date(expiry).toISOString(), fixtureBundleToken)
   if (!options.scenario.has('empty-links')) {
     const revoked = addLink('ui-fixture', '已撤销的项目交流资料', references('ui-fixture').slice(0, 2), new Date(Date.now() + 86400000).toISOString(), 'r'.repeat(43))
     revoked.revokedAt = now
@@ -109,7 +108,7 @@ export function createSharingFixture(options: FixtureOptions) {
     return !!link && !link.revokedAt && new Date(link.expiresAt).getTime() > Date.now() && ownerEnabled(link.ownerId) && availableItems(link).length > 0
   }
   function summary(link: LinkRecord): ShareBundleSummary {
-    return { id: link.id, title: link.title, expiresAt: link.expiresAt, createdAt: link.createdAt, revokedAt: link.revokedAt, active: accessible(link), itemCount: availableItems(link).length, tokenAvailable: link.tokenAvailable }
+    return { id: link.id, title: link.title, expiresAt: link.expiresAt, createdAt: link.createdAt, revokedAt: link.revokedAt, active: accessible(link), itemCount: availableItems(link).length }
   }
   function detail(link: LinkRecord): ShareBundleItem[] {
     return link.items.map((item) => ({ id: item.id, resourceId: item.reference.id, resourceType: item.reference.type,
@@ -246,32 +245,18 @@ export function createSharingFixture(options: FixtureOptions) {
       }
       const link = links.find((entry) => entry.id === parts[2] && entry.ownerId === ownerId)
       if (!link) return failure()
-      const modifiable = !link.revokedAt && new Date(link.expiresAt).getTime() > Date.now()
-      if (parts[3] === 'token' && method === 'POST') {
-        if (!modifiable) return failure('测试：已撤销或已过期的外部链接不能复制。', 409)
-        const regenerated = !link.tokenAvailable
-        if (regenerated) {
-          link.token = `g${String(++sequence).padStart(42, '0')}`
-          link.tokenAvailable = true
-        }
-        return response({ token: link.token, regenerated })
-      }
-      if (parts.length === 3 && method === 'PATCH') {
-        const title = String(body.title ?? '').trim()
-        if (!modifiable) return failure('测试：已撤销或已过期的外部链接不能修改。', 409)
-        if (!title || title.length > 200) return failure('测试：请输入 1–200 字的分享标题。', 400)
-        link.title = title
-        return response(summary(link))
+      if (method === 'PATCH' && parts.length === 3) {
+        if (!String(body.title ?? '').trim()) return failure('测试：分享标题不能为空。', 400)
+        link.title = String(body.title).trim()
+        return noContent()
       }
       if (parts[3] === 'items' && method === 'POST') {
         const selected = validatedReferences(ownerId, body.items)
-        if (!modifiable) return failure('测试：已撤销或已过期的外部链接不能修改。', 409)
-        if (!selected) return failure('测试：请选择 1–100 项属于当前成员的内容。', 400)
-        const keys = new Set(link.items.map((item) => resourceKey(ownerId, item.reference)))
-        if (selected.some((item) => keys.has(resourceKey(ownerId, item)))) return failure('测试：内容已存在于此链接。', 400)
-        if (link.items.filter((item) => !item.removedAt).length + selected.length > 100) return failure('测试：每个链接最多包含 100 项内容。', 400)
+        if (!selected || !accessible(link) || link.items.length + selected.length > 100) return failure('测试：分享内容无效。', 400)
+        const existing = new Set(link.items.map((item) => `${item.reference.type}:${item.reference.id}`))
+        if (selected.some((item) => existing.has(`${item.type}:${item.id}`))) return failure('测试：内容已在此链接中。', 409)
         for (const reference of selected) link.items.push({ id: `fixture-bundle-item-${++sequence}`, reference, removedAt: null })
-        return response({ link: summary(link), items: detail(link) }, 201)
+        return noContent()
       }
       if (parts[3] === 'items' && method === 'DELETE') {
         const item = link.items.find((entry) => entry.id === parts[4])

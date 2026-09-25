@@ -17,8 +17,8 @@ public class SharingController {
     SharingDtos.PublishResult publish(@WorkspaceOwner String owner, @Valid @RequestBody SharingDtos.PublishRequest request) { return service.publish(owner, request); }
     @GetMapping("/pool")
     SharingDtos.Page<SharingDtos.PoolSummary> pool(@WorkspaceOwner String owner, @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "") String q,
-            @RequestParam(required = false) ResourceType type, @RequestParam(defaultValue = "false") boolean mine) { return service.pool(owner, page, size, q, type, mine); }
+                                                   @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "") String q,
+                                                   @RequestParam(required = false) ResourceType type, @RequestParam(defaultValue = "false") boolean mine) { return service.pool(owner, page, size, q, type, mine); }
     @GetMapping("/pool/{id}")
     SharingDtos.SharedContent content(@WorkspaceOwner String owner, @PathVariable String id) { return service.poolContent(owner, id); }
     @GetMapping("/pool/{id}/images/{imageId}")
@@ -29,17 +29,15 @@ public class SharingController {
     SharingDtos.LinkSecret create(@WorkspaceOwner String owner, @Valid @RequestBody SharingDtos.CreateLinkRequest request) { return service.createLink(owner, request); }
     @GetMapping("/links")
     SharingDtos.Page<SharingDtos.LinkSummary> links(@WorkspaceOwner String owner, @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "") String q) { return service.links(owner, page, size, q); }
+                                                    @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue = "") String q) { return service.links(owner, page, size, q); }
     @GetMapping("/links/{id}")
     SharingDtos.LinkDetail link(@WorkspaceOwner String owner, @PathVariable String id) { return service.link(owner, id); }
-    @PostMapping("/links/{id}/token")
-    SharingDtos.LinkToken token(@WorkspaceOwner String owner, @PathVariable String id) { return service.linkToken(owner, id); }
     @PatchMapping("/links/{id}")
-    SharingDtos.LinkSummary rename(@WorkspaceOwner String owner, @PathVariable String id,
-            @Valid @RequestBody SharingDtos.RenameLinkRequest request) { return service.renameLink(owner, id, request); }
-    @PostMapping("/links/{id}/items") @ResponseStatus(HttpStatus.CREATED)
-    SharingDtos.LinkDetail addItems(@WorkspaceOwner String owner, @PathVariable String id,
-            @Valid @RequestBody SharingDtos.AddItemsRequest request) { return service.addItems(owner, id, request); }
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void updateTitle(@WorkspaceOwner String owner, @PathVariable String id, @Valid @RequestBody SharingDtos.UpdateLinkRequest request) { service.updateTitle(owner, id, request); }
+    @PostMapping("/links/{id}/items")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void addItems(@WorkspaceOwner String owner, @PathVariable String id, @Valid @RequestBody SharingDtos.AddLinkItemsRequest request) { service.addItems(owner, id, request); }
     @DeleteMapping("/links/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
     void revoke(@WorkspaceOwner String owner, @PathVariable String id) { service.revokeLinks(owner, new SharingDtos.RevokeRequest(List.of(id))); }
     @PostMapping("/links/revoke") @ResponseStatus(HttpStatus.NO_CONTENT)

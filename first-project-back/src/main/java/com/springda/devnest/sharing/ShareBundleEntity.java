@@ -10,24 +10,17 @@ public class ShareBundleEntity extends BaseEntity {
     @Column(name = "owner_id", nullable = false, length = 36) private String ownerId;
     @Column(nullable = false, length = 200) private String title;
     @Column(name = "token_digest", nullable = false, unique = true, length = 64) private String tokenDigest;
-    @Column(name = "token_ciphertext", length = 192) private String tokenCiphertext;
     @Column(name = "expires_at", nullable = false) private Instant expiresAt;
     @Column(name = "revoked_at") private Instant revokedAt;
     protected ShareBundleEntity() {}
     public ShareBundleEntity(String ownerId, String title, String digest, Instant expiresAt) {
-        this(ownerId, title, digest, null, expiresAt);
+        this.ownerId = ownerId; this.title = title; this.tokenDigest = digest; this.expiresAt = expiresAt;
     }
-    public ShareBundleEntity(String ownerId, String title, String digest, String tokenCiphertext, Instant expiresAt) {
-        this.ownerId = ownerId; this.title = title; this.tokenDigest = digest; this.tokenCiphertext = tokenCiphertext; this.expiresAt = expiresAt;
-    }
-    public void rename(String title) { this.title = title; }
-    public void replaceToken(String digest, String ciphertext) { this.tokenDigest = digest; this.tokenCiphertext = ciphertext; }
+    public void rename(String nextTitle) { title = nextTitle; }
     public void revoke(Instant now) { if (revokedAt == null) revokedAt = now; }
     public boolean isActive(Instant now) { return revokedAt == null && expiresAt.isAfter(now); }
     public String getOwnerId() { return ownerId; }
     public String getTitle() { return title; }
-    public String getTokenDigest() { return tokenDigest; }
-    public String getTokenCiphertext() { return tokenCiphertext; }
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getRevokedAt() { return revokedAt; }
 }

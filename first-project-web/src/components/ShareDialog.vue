@@ -6,6 +6,7 @@ import AppModal from './AppModal.vue'
 import LegacyShareLinks from './LegacyShareLinks.vue'
 import { createShareBundle, publishToPool } from '../services/sharing'
 import { prepareShareSelection, shareExpiration } from '../utils/shareSelection'
+import { rememberShareBundleToken } from '../utils/shareBundleLinks'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationStore } from '../stores/notifications'
 import type { ShareBundleSecret, ShareSelection } from '../types/sharing'
@@ -16,7 +17,7 @@ const router = useRouter()
 const notifications = useNotificationStore()
 const root = ref<HTMLElement | null>(null)
 const channel = ref<'pool' | 'link'>('pool')
-const title = ref((props.items.length === 1 ? props.items[0]!.title : `${props.items[0]?.title || '知识分享'} 等 ${props.items.length} 项`).slice(0, 200))
+const title = ref((props.items.length === 1 ? props.items[0]!.title : `${props.items[0]?.title || '知识分享'} 等 ${props.items.length} 项`).slice(0, 160))
 const days = ref(7)
 const busy = ref(false)
 const legacyBusy = ref(false)
@@ -47,11 +48,12 @@ async function submit() {
       poolResult.value = result.publishedCount ? `已将 ${result.publishedCount} 项内容发布到知识广场${result.existingCount ? `，另有 ${result.existingCount} 项已在知识广场中` : ''}。` : '所选内容已在知识广场中，无需重复发布。'
       notifications.notify(poolResult.value, { type: 'success' })
     } else {
-      if (!title.value.trim() || title.value.trim().length > 200) throw new Error('请填写 1–200 个字的分享名称。')
+      if (!title.value.trim() || title.value.trim().length > 160) throw new Error('请填写 1–160 个字的分享名称。')
       const result = await createShareBundle(title.value.trim(), items, shareExpiration(Number(days.value)))
       if (!active || owner !== auth.workspaceKey) return
       secret.value = result
-      notifications.notify('分享链接已生成，可在外链管理中再次复制。', { type: 'success' })
+      rememberShareBundleToken(owner, result.id, result.token)
+      notifications.notify('分享链接已生成，请复制保存。', { type: 'success' })
       await nextTick(); root.value?.querySelector<HTMLTextAreaElement>('textarea')?.focus()
     }
   } catch (cause) { if (active && owner === auth.workspaceKey) error.value = cause instanceof Error ? cause.message : '分享失败，请重试。' }
@@ -97,7 +99,7 @@ onBeforeUnmount(() => { active = false; secret.value = null; window.removeEventL
       <p class="scope-note">分享内容会随后续保存同步更新。{{ channel === 'pool' ? '从知识广场撤下不会影响外部链接。' : '可以撤销整条链接，也可以仅移除其中某项内容。' }}</p>
       <form v-if="!secret && !(channel === 'pool' && poolResult)" class="share-form" @submit.prevent="submit">
         <template v-if="channel === 'link'">
-          <label class="name-field"><span>分享名称</span><input v-model="title" maxlength="200" required :disabled="busy" /></label>
+          <label class="name-field"><span>分享名称</span><input v-model="title" maxlength="160" required :disabled="busy" /></label>
           <div class="expiry-field"><label><span>有效期</span><input v-model.number="days" type="number" min="1" max="365" step="1" required aria-label="分享链接有效天数" :disabled="busy" /><span>天</span></label><div><button v-for="preset in [1, 7, 30]" :key="preset" type="button" :aria-pressed="days === preset" :disabled="busy" @click="days = preset">{{ preset }} 天</button></div></div>
         </template>
         <p v-if="error" class="error" role="alert"><AlertCircle :size="16" />{{ error }}</p>
@@ -105,7 +107,7 @@ onBeforeUnmount(() => { active = false; secret.value = null; window.removeEventL
         <p v-if="items.length > 100" class="error" role="alert">每次最多分享 100 项内容，请关闭窗口并减少选择。</p>
       </form>
       <section v-if="channel === 'pool' && poolResult" class="share-success" aria-live="polite"><Check :size="24" /><div><strong>{{ poolResult }}</strong><p>可以在“我的分享”中单篇或批量撤下。</p></div><button class="button button-secondary" type="button" @click="showManagement('mine')">查看我的分享</button></section>
-      <section v-if="secret" class="share-secret" aria-live="polite"><div><Check :size="19" /><strong>链接已生成</strong><span>有效至 {{ new Date(secret.expiresAt).toLocaleString('zh-CN') }}</span></div><label><span class="sr-only">新生成的分享链接</span><textarea :value="shareUrl" readonly rows="2" @focus="($event.target as HTMLTextAreaElement).select()" /></label><p>之后仍可在知识广场的“外链管理”中再次复制。</p><div class="secret-actions"><button class="button button-primary" type="button" @click="copy"><Check v-if="copied" :size="16" /><Copy v-else :size="16" />{{ copied ? '已复制' : '复制链接' }}</button><a class="button button-secondary" :href="shareUrl" target="_blank" rel="noopener noreferrer">打开预览</a></div></section>
+      <section v-if="secret" class="share-secret" aria-live="polite"><div><Check :size="19" /><strong>链接已生成</strong><span>有效至 {{ new Date(secret.expiresAt).toLocaleString('zh-CN') }}</span></div><label><span class="sr-only">新生成的分享链接</span><textarea :value="shareUrl" readonly rows="2" @focus="($event.target as HTMLTextAreaElement).select()" /></label><p>请现在复制保存，关闭窗口后无法再次查看这条链接。</p><div class="secret-actions"><button class="button button-primary" type="button" @click="copy"><Check v-if="copied" :size="16" /><Copy v-else :size="16" />{{ copied ? '已复制' : '复制链接' }}</button><a class="button button-secondary" :href="shareUrl" target="_blank" rel="noopener noreferrer">打开预览</a></div></section>
       <div class="management-links"><button type="button" :disabled="blocked" @click="showManagement('mine')">管理我的广场分享</button><button type="button" :disabled="blocked" @click="showManagement('links')">外链管理与撤销</button></div>
       <LegacyShareLinks v-if="items.length === 1 && items[0]?.type !== 'FLOWCHART'" :item="items[0]!" @busy="legacyBusy = $event" />
     </div>

@@ -6,7 +6,7 @@ import ts from 'typescript'
 import { createRenderer, defineComponent, h, nextTick } from 'vue'
 import * as flowcharts from '../src/utils/flowcharts.ts'
 
-type HostNode = { type: string; props: Record<string, unknown>; children: HostNode[]; parent?: HostNode; text?: string }
+type HostNode = { type: string; props: Record<string, unknown>; children: HostNode[]; parent?: HostNode; text?: string; click: () => void }
 const workspacePath = new URL('../src/components/flowcharts/FlowchartWorkspace.vue', import.meta.url)
 const starterPath = new URL('../src/components/flowcharts/FlowchartStarter.vue', import.meta.url)
 const workspaceSource = readFileSync(workspacePath, 'utf8')
@@ -42,16 +42,16 @@ const renderer = createRenderer<HostNode, HostNode>({
   patchProp(node, key, _previous, next) { node.props[key] = next },
   insert(child, parent, anchor) { const index = anchor ? parent.children.indexOf(anchor) : -1; if (index >= 0) parent.children.splice(index, 0, child); else parent.children.push(child); child.parent = parent },
   remove(child) { const parent = child.parent; if (parent) parent.children.splice(parent.children.indexOf(child), 1) },
-  createElement(type) { return { type, props: {}, children: [] } },
-  createText(text) { return { type: '#text', props: {}, children: [], text } },
-  createComment(text) { return { type: '#comment', props: {}, children: [], text } },
+  createElement(type) { return { type, props: {}, children: [], click() {} } },
+  createText(text) { return { type: '#text', props: {}, children: [], text, click() {} } },
+  createComment(text) { return { type: '#comment', props: {}, children: [], text, click() {} } },
   setText(node, text) { node.text = text },
-  setElementText(node, text) { node.children = [{ type: '#text', props: {}, children: [], text, parent: node }] },
+  setElementText(node, text) { node.children = [{ type: '#text', props: {}, children: [], text, parent: node, click() {} }] },
   parentNode(node) { return node.parent ?? null },
   nextSibling(node) { const siblings = node.parent?.children ?? []; return siblings[siblings.indexOf(node) + 1] ?? null },
   setScopeId() {},
   cloneNode(node) { return { ...node, props: { ...node.props }, children: [...node.children] } },
-  insertStaticContent(content, parent, anchor) { const node: HostNode = { type: '#static', props: {}, children: [], text: content }; const index = anchor ? parent.children.indexOf(anchor) : -1; if (index >= 0) parent.children.splice(index, 0, node); else parent.children.push(node); node.parent = parent; return [node, node] },
+  insertStaticContent(content, parent, anchor) { const node: HostNode = { type: '#static', props: {}, children: [], text: content, click() {} }; const index = anchor ? parent.children.indexOf(anchor) : -1; if (index >= 0) parent.children.splice(index, 0, node); else parent.children.push(node); node.parent = parent; return [node, node] },
 })
 
 function find(node: HostNode, predicate: (candidate: HostNode) => boolean): HostNode | undefined {
@@ -99,7 +99,7 @@ function mountWorkspace(documentId?: string) {
     if (id.endsWith('flowchartStarterEscape')) return { attachStarterEscapeListener: () => () => {} }
     throw new Error(`Unexpected workspace dependency: ${id}`)
   })
-  const root: HostNode = { type: 'root', props: {}, children: [] }
+  const root: HostNode = { type: 'root', props: {}, children: [], click() {} }
   const app = renderer.createApp(component, { documentId, domainId: null, domains: [], onClose: () => closeCalls.push('close') })
   app.mount(root)
   return { root, closeCalls, getCalls, unmount: () => { app.unmount(); Object.assign(globalThis, { window: originalWindow, document: originalDocument }) } }
@@ -140,4 +140,60 @@ test('mounted workspace starts new flowcharts in the starter, handles blank/temp
     assert.ok(find(existing.root, node => node.type === 'editor-shell'))
     assert.deepEqual(existing.getCalls, ['existing-flowchart'])
   } finally { existing.unmount() }
+})
+
+test('mounted starter announces import format errors and clears them before retrying or starting', async () => {
+  const invalidFile = { text: async () => '{not valid json}' }
+  const importFailure = async (view: ReturnType<typeof mountWorkspace>) => {
+    const input = find(view.root, node => node.type === 'input')!
+    await (input.props.onChange as (event: { target: { files: unknown[]; value: string } }) => Promise<void>)({ target: { files: [invalidFile], value: 'invalid.flowchart.json' } })
+    await flush()
+  }
+
+  const retry = mountWorkspace()
+  try {
+    await importFailure(retry)
+    const error = find(retry.root, node => node.props.role === 'alert' && node.props['aria-live'] === 'assertive')
+    assert.ok(error)
+    assert.match(text(error), /导入失败|流程图文件格式无效/)
+    const importButton = find(retry.root, node => node.type === 'button' && text(node).includes('导入流程图'))!
+    ;(importButton.props.onClick as () => void)()
+    await flush()
+    assert.equal(find(retry.root, node => node.props.role === 'alert'), undefined)
+  } finally { retry.unmount() }
+
+  const blank = mountWorkspace()
+  try {
+    await importFailure(blank)
+    const blankButton = find(blank.root, node => node.type === 'button' && text(node).includes('从空白画布开始'))!
+    ;(blankButton.props.onClick as () => void)()
+    await flush()
+    assert.ok(find(blank.root, node => node.type === 'editor-shell'))
+    assert.equal(find(blank.root, node => node.props.role === 'alert'), undefined)
+  } finally { blank.unmount() }
+
+  const template = mountWorkspace()
+  try {
+    await importFailure(template)
+    const templateButton = find(template.root, node => node.type === 'button' && text(node).includes('条件分支'))!
+    ;(templateButton.props.onClick as () => void)()
+    await flush()
+    assert.ok(find(template.root, node => node.type === 'editor-shell'))
+    assert.equal(find(template.root, node => node.props.role === 'alert'), undefined)
+  } finally { template.unmount() }
+
+  const close = mountWorkspace()
+  try {
+    await importFailure(close)
+    const cancel = find(close.root, node => node.type === 'button' && text(node) === '取消')!
+    ;(cancel.props.onClick as () => void)()
+    await flush()
+    assert.deepEqual(close.closeCalls, ['close'])
+    assert.equal(find(close.root, node => node.props.role === 'alert'), undefined)
+  } finally { close.unmount() }
+
+  const reopened = mountWorkspace()
+  try {
+    assert.equal(find(reopened.root, node => node.props.role === 'alert'), undefined)
+  } finally { reopened.unmount() }
 })

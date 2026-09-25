@@ -601,7 +601,7 @@ defineExpose({ add, startDrag, updateCell, selectId, action, fit: fitContent, ke
 .flow-canvas__tools span { min-width: 45px; padding: 0 4px; text-align: center; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }
 .flow-canvas__tools i { height: 18px; margin: 0 4px; border-left: 1px solid var(--border); }
 .flow-canvas__context { position: absolute; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid var(--border-strong); border-radius: 8px; background: color-mix(in srgb, var(--panel) 96%, transparent); box-shadow: 0 6px 18px color-mix(in srgb, var(--bg) 16%, transparent); backdrop-filter: blur(10px); transition: left .16s ease, top .16s ease; }
-.flow-canvas__context button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--subtle); cursor: pointer; }
+.flow-canvas__context button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--subtle); cursor: pointer; }
 .flow-canvas__context button:hover { color: var(--accent-strong); background: var(--accent-bg); }
 .flow-canvas__context button.danger:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .flow-canvas__context i { height: 18px; margin: 0 3px; border-left: 1px solid var(--border); }

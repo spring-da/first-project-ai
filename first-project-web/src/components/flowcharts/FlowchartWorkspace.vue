@@ -27,7 +27,7 @@ interface EditorShellHandle { canvas?: CanvasHandle; focusTitle: () => void; foc
 const auth = useAuthStore(), notifications = useNotificationStore(), confirmation = useConfirmationStore()
 const ownerKey = auth.workspaceKey ?? '', localId = createClientId(), lifetime = new AbortController()
 const editorShell = ref<EditorShellHandle>(), canvas = computed(() => editorShell.value?.canvas), importInput = ref<HTMLInputElement>()
-const session = shallowRef<FlowchartSession | null>(null), tick = ref(0), loading = ref(true), loadingError = ref(''), localError = ref(''), localSaved = ref('')
+const session = shallowRef<FlowchartSession | null>(null), tick = ref(0), loading = ref(true), loadingError = ref(''), localError = ref(''), localSaved = ref(''), starterImportError = ref('')
 const editing = ref(!!props.startEditing), showStarter = ref(!props.documentId && !props.initialDiagram), smallScreen = ref(window.matchMedia('(max-width: 767px)').matches)
 const selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), exporting = ref(false), showShare = ref(false)
 const drafts = ref<LocalFlowchartDraft[]>([]), showHistory = ref(false), revisions = ref<FlowchartRevision[]>([]), revisionPage = ref(0), revisionBusy = ref(false), revisionPreview = shallowRef<FlowchartRevisionDetail | null>(null)
@@ -78,6 +78,7 @@ function install(d: FlowchartDraft, saved: FlowchartDocument | null, creationKey
 }
 async function startNewDraft(next: FlowchartDraft) {
   if (!active) return
+  starterImportError.value = ''
   install(next, null)
   editing.value = true
   showStarter.value = false
@@ -86,7 +87,7 @@ async function startNewDraft(next: FlowchartDraft) {
 }
 function startBlank() { void startNewDraft({ title: props.initialTitle || '未命名流程图', domainId: props.domainId, favorite: false, diagram: props.initialDiagram ?? emptyDiagram() }) }
 function startTemplate(kind: 'sequence' | 'decision' | 'architecture') { void startNewDraft({ title: '未命名流程图', domainId: props.domainId, favorite: false, diagram: createTemplate(kind) }) }
-function chooseImport() { importInput.value?.click() }
+function chooseImport() { starterImportError.value = ''; importInput.value?.click() }
 async function importFile(event: Event) {
   const input = event.target as HTMLInputElement, file = input.files?.[0]
   input.value = ''
@@ -94,7 +95,11 @@ async function importFile(event: Event) {
   try {
     const imported = importFlowchartSource(await file.text())
     await startNewDraft({ title: imported.title, domainId: props.domainId, favorite: false, diagram: imported.diagram })
-  } catch (cause) { notifyError((cause as Error).message) }
+  } catch (cause) {
+    const message = (cause as Error).message
+    if (showStarter.value) starterImportError.value = message
+    notifyError(message)
+  }
 }
 
 function selectionChanged(cell: FlowNode | FlowEdge | null) {
@@ -161,7 +166,7 @@ async function canLeave() {
     return confirmation.ask({ title: '修改尚未备份', message: '云端保存和本机草稿都未成功。离开会丢失这些修改。', detail: '建议取消离开，先导出流程图源文件。', confirmText: '仍然离开', cancelText: '继续编辑', tone: 'danger', icon: 'leave' })
   }
 }
-async function close() { if (await canLeave()) emit('close') }
+async function close() { starterImportError.value = ''; if (await canLeave()) emit('close') }
 async function reloadCloud() {
   const id = doc.value?.id ?? props.documentId
   if (!id) return
@@ -281,7 +286,7 @@ defineExpose({ canLeave })
 
 <template>
   <section class="flow-workspace" aria-label="流程图工作区" @keydown.capture="shortcut">
-    <FlowchartStarter v-if="showStarter" :templates="starterTemplates" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
+    <FlowchartStarter v-if="showStarter" :templates="starterTemplates" :import-error="starterImportError" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
     <template v-else>
     <div v-if="session" class="flow-meta"><label><span>目录</span><select :value="draft.domainId ?? ''" :disabled="readOnly" @change="field('domainId', ($event.target as HTMLSelectElement).value || null)"><option value="">未分类</option><option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.name }}</option></select></label><button type="button" :disabled="readOnly" :class="{ active: draft.favorite }" @click="field('favorite', !draft.favorite)"><Heart :size="13" :fill="draft.favorite ? 'currentColor' : 'none'" />{{ draft.favorite ? '已收藏' : '收藏' }}</button><span>{{ draft.diagram.nodes.length }} 个图形 · {{ draft.diagram.edges.length }} 条连线</span><small v-if="localSaved">本机草稿已备份</small></div>
     <div v-if="smallScreen" class="flow-notice"><Smartphone :size="15" />手机支持查看和缩放，请在电脑上编辑图形。</div>

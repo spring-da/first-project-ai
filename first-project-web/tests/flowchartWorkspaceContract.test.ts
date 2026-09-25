@@ -7,6 +7,8 @@ const workspaceSource = readFileSync(new URL('../src/components/flowcharts/Flowc
 const inspectorSource = readFileSync(new URL('../src/components/flowcharts/InspectorPanel.vue', import.meta.url), 'utf8')
 const shellSource = readFileSync(new URL('../src/components/flowcharts/FlowchartEditorShell.vue', import.meta.url), 'utf8')
 const knowledgeViewSource = readFileSync(new URL('../src/views/KnowledgeView.vue', import.meta.url), 'utf8')
+const nodeLibrarySource = readFileSync(new URL('../src/components/flowcharts/NodeLibraryPanel.vue', import.meta.url), 'utf8')
+const canvasSource = readFileSync(new URL('../src/components/flowcharts/FlowchartCanvas.vue', import.meta.url), 'utf8')
 
 test('flowchart workspace uses a state-aware inspector and focused-editor chrome', () => {
   assert.match(workspaceSource, /import FlowchartEditorShell/)
@@ -53,7 +55,7 @@ test('starter Escape closes only the active starter without taking over editor s
 
 test('hidden starter import input is inaccessible while its visible trigger remains operable', () => {
   assert.match(workspaceSource, /@import="chooseImport"/)
-  assert.match(workspaceSource, /function chooseImport\(\) \{ importInput\.value\?\.click\(\) \}/)
+  assert.match(workspaceSource, /function chooseImport\(\) \{ starterImportError\.value = ''; importInput\.value\?\.click\(\) \}/)
   assert.match(workspaceSource, /<input ref="importInput" class="flow-import-input"[^>]*tabindex="-1"[^>]*aria-hidden="true"/)
 })
 
@@ -62,4 +64,14 @@ test('compiled dark workspace CSS applies flow tokens to the mounted workbench',
   const compiled = compileStyle({ filename: 'FlowchartWorkspace.vue', id: 'data-v-flowchart-theme', source: descriptor.styles.map(style => style.content).join('\n'), scoped: true })
   assert.deepEqual(compiled.errors, [])
   assert.match(compiled.code, /:root\[data-theme=(?:"dark"|'dark'|dark)\] \.flow-workspace\s*\{[^}]*--flow-bg:\s*#151a23[^}]*--flow-surface:\s*#1d2430[^}]*--flow-text:\s*#edf2fb/s)
+})
+
+test('workbench icon controls retain 32px desktop click targets', () => {
+  const compile = (source: string, filename: string) => compileStyle({ filename, id: `data-v-${filename}`, source: parse(source, { filename }).descriptor.styles.map(style => style.content).join('\n'), scoped: true })
+  const library = compile(nodeLibrarySource, 'NodeLibraryPanel.vue')
+  const canvas = compile(canvasSource, 'FlowchartCanvas.vue')
+  assert.deepEqual(library.errors, [])
+  assert.deepEqual(canvas.errors, [])
+  assert.match(library.code, /\.node-library__toggle[^\{]*\{[^}]*width:\s*32px[^}]*height:\s*32px/s)
+  assert.match(canvas.code, /\.flow-canvas__context button[^\{]*\{[^}]*width:\s*32px[^}]*height:\s*32px/s)
 })

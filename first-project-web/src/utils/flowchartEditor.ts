@@ -34,6 +34,57 @@ export function shouldOpenProperties(trigger: PropertyEditTrigger): boolean {
   return trigger === 'double' || trigger === 'context'
 }
 
+/**
+ * Keep export-only UI transitions deterministic: editor overlays disappear
+ * before serialization and are restored even when an encoder rejects.
+ */
+export async function runCanvasExportCycle<T>(setOverlayHidden: (hidden: boolean) => void, exportGraph: () => Promise<T>): Promise<T> {
+  setOverlayHidden(true)
+  try { return await exportGraph() }
+  finally { setOverlayHidden(false) }
+}
+
+/**
+ * Defend exported SVGs against an exporter that serializes surrounding editor
+ * chrome. X6 normally returns graph-only markup, but the final artifact must
+ * never include canvas controls or the workbench inspector.
+ */
+const FLOWCHART_EXPORT_OVERLAY_CLASSES = new Set([
+  'flow-canvas__tools',
+  'flow-canvas__context',
+  'flow-canvas__edge-editor',
+  'flow-canvas__mini',
+  'flow-canvas__hint',
+  'inspector-panel',
+])
+
+function isExportOverlayElement(token: string): boolean {
+  const classValue = token.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2] ?? ''
+  return classValue.split(/\s+/).some(name => FLOWCHART_EXPORT_OVERLAY_CLASSES.has(name))
+}
+
+/** Remove complete overlay subtrees from serialized SVG text before download. */
+export function sanitizeFlowchartSvgMarkup(markup: string): string {
+  let skippedDepth = 0
+  const output: string[] = []
+  for (const token of markup.match(/<!--[\s\S]*?-->|<[^>]*>|[^<]+/g) ?? []) {
+    const isClosing = /^<\//.test(token)
+    const isOpening = /^<[A-Za-z][^\s/>]*/.test(token)
+    const isSelfClosing = /\/\s*>$/.test(token)
+    if (skippedDepth) {
+      if (isOpening && !isSelfClosing) skippedDepth++
+      else if (isClosing) skippedDepth--
+      continue
+    }
+    if (isOpening && isExportOverlayElement(token)) {
+      if (!isSelfClosing) skippedDepth = 1
+      continue
+    }
+    output.push(token)
+  }
+  return output.join('')
+}
+
 export const FLOWCHART_SHAPES: FlowchartShapeItem[] = [
   { kind: 'terminal', label: '开始 / 结束', category: 'flow', hint: '流程起止节点' },
   { kind: 'rectangle', label: '处理步骤', category: 'flow', hint: '执行一个动作' },
@@ -43,6 +94,10 @@ export const FLOWCHART_SHAPES: FlowchartShapeItem[] = [
   { kind: 'database', label: '数据库', category: 'data', hint: '数据存储' },
   { kind: 'text', label: '文本', category: 'annotation', hint: '说明文字' },
 ]
+
+export function isFlowchartShapeKind(value: unknown): value is FlowNodeKind {
+  return FLOWCHART_SHAPES.some(shape => shape.kind === value)
+}
 
 export function filterFlowchartShapes(query = '', category: FlowchartShapeCategory = 'all'): FlowchartShapeItem[] {
   const normalized = query.trim().toLocaleLowerCase()

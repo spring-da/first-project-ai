@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
-import { ArrowLeft, Save, Share2, Download, History, Pencil, Workflow, Circle, Square, Diamond, Database, Type, RectangleHorizontal, ArrowRightLeft, LayoutTemplate, CloudCheck, LoaderCircle, AlertCircle, RotateCcw, FileJson, Smartphone, Heart, Search, ChevronDown } from 'lucide-vue-next'
+import { Workflow, Diamond, Database, LoaderCircle, AlertCircle, RotateCcw, Smartphone, Heart } from 'lucide-vue-next'
 import type { FlowchartDiagram, FlowchartDocument, FlowchartDraft, FlowNode, FlowEdge, FlowNodeKind, FlowchartSummary, FlowchartRevision, FlowchartRevisionDetail } from '../../types/flowcharts'
 import type { KnowledgeDomain } from '../../types'
 import { useAuthStore } from '../../stores/auth'
@@ -12,38 +12,60 @@ import { FlowchartSession } from '../../utils/flowchartSession'
 import { createFlowchartDraftStorage } from '../../utils/flowchartDrafts'
 import type { LocalFlowchartDraft } from '../../utils/flowchartDrafts'
 import { createClientId } from '../../utils/clientId'
-import { copyDraft, emptyDiagram, createTemplate, exportFlowchartSource, downloadBlob, validateDiagram } from '../../utils/flowcharts'
-import { filterFlowchartShapes, type FlowchartShapeCategory } from '../../utils/flowchartEditor'
-import FlowchartProperties from './FlowchartProperties.vue'
+import { copyDraft, emptyDiagram, createTemplate, exportFlowchartSource, downloadBlob, importFlowchartSource, validateDiagram } from '../../utils/flowcharts'
+import { createNodeLibraryController } from '../../utils/flowchartEditorState'
+import { attachStarterEscapeListener } from '../../utils/flowchartStarterEscape'
+import FlowchartStarter from './FlowchartStarter.vue'
+import FlowchartEditorShell from './FlowchartEditorShell.vue'
 import AppModal from '../AppModal.vue'
 const FlowchartCanvas = defineAsyncComponent(() => import('./FlowchartCanvas.vue'))
 const ShareDialog = defineAsyncComponent(() => import('../ShareDialog.vue'))
 const props = defineProps<{ documentId?: string; domainId: string | null; domains: KnowledgeDomain[]; initialDiagram?: FlowchartDiagram; initialTitle?: string; startEditing?: boolean }>()
 const emit = defineEmits<{ close: []; saved: [document: FlowchartSummary] }>()
-interface CanvasHandle { add: (kind: FlowNodeKind) => void; startDrag: (kind: FlowNodeKind, event: MouseEvent) => void; updateCell: (cell: FlowNode | FlowEdge) => void; selectId: (id: string) => void; action: (name: 'copy' | 'paste' | 'delete' | 'front' | 'back') => void; fit: () => void; keepSelectedInView: () => void; flush: () => void; exportImage: (kind: 'png' | 'svg', title: string) => Promise<void>; getDiagram: () => FlowchartDiagram }
+interface CanvasHandle { add: (kind: FlowNodeKind) => void; startDrag: (kind: FlowNodeKind, event: MouseEvent) => void; updateCell: (cell: FlowNode | FlowEdge) => void; selectId: (id: string | null) => void; action: (name: 'copy' | 'paste' | 'delete' | 'front' | 'back') => void; fit: () => void; keepSelectedInView: () => void; flush: () => void; exportImage: (kind: 'png' | 'svg', title: string) => Promise<void>; getDiagram: () => FlowchartDiagram }
+interface EditorShellHandle { canvas?: CanvasHandle; focusTitle: () => void; focusInspectorLabel: () => void }
 const auth = useAuthStore(), notifications = useNotificationStore(), confirmation = useConfirmationStore()
 const ownerKey = auth.workspaceKey ?? '', localId = createClientId(), lifetime = new AbortController()
-const canvas = ref<CanvasHandle>(), properties = ref<InstanceType<typeof FlowchartProperties>>()
-const session = shallowRef<FlowchartSession | null>(null), tick = ref(0), loading = ref(true), loadingError = ref(''), localError = ref(''), localSaved = ref('')
-const editing = ref(!props.documentId || !!props.startEditing), smallScreen = ref(window.matchMedia('(max-width: 767px)').matches)
-const showProperties = ref(false), propertiesPinned = ref(false), selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), showExport = ref(false), exporting = ref(false), showShare = ref(false)
+const editorShell = ref<EditorShellHandle>(), canvas = computed(() => editorShell.value?.canvas), importInput = ref<HTMLInputElement>()
+const session = shallowRef<FlowchartSession | null>(null), tick = ref(0), loading = ref(true), loadingError = ref(''), localError = ref(''), localSaved = ref(''), starterImportError = ref('')
+const editing = ref(!!props.startEditing), showStarter = ref(!props.documentId && !props.initialDiagram), smallScreen = ref(window.matchMedia('(max-width: 767px)').matches)
+const selected = shallowRef<FlowNode | FlowEdge | null>(null), showTemplates = ref(false), exporting = ref(false), showShare = ref(false)
 const drafts = ref<LocalFlowchartDraft[]>([]), showHistory = ref(false), revisions = ref<FlowchartRevision[]>([]), revisionPage = ref(0), revisionBusy = ref(false), revisionPreview = shallowRef<FlowchartRevisionDetail | null>(null)
 let storage: ReturnType<typeof createFlowchartDraftStorage> | undefined
 try { storage = createFlowchartDraftStorage() } catch { localError.value = '浏览器不支持本机草稿存储，请及时保存或导出源文件。' }
 let active = true, idleTimer: ReturnType<typeof setTimeout> | undefined, maxTimer: ReturnType<typeof setTimeout> | undefined, localTimer: ReturnType<typeof setTimeout> | undefined, retryTimer: ReturnType<typeof setTimeout> | undefined
 let writes = Promise.resolve(), failures = 0
 let recoveredDraftId: string | null = null
+let removeStarterEscapeListener: (() => void) | undefined
+let stopStarterEscapeWatch: (() => void) | undefined
 const draft = computed(() => { void tick.value; return session.value?.draft ?? { title: '', domainId: props.domainId, favorite: false, diagram: emptyDiagram() } })
 const dirty = computed(() => { void tick.value; return session.value?.dirty ?? false })
 const status = computed(() => { void tick.value; return session.value?.status ?? 'idle' })
 const error = computed(() => { void tick.value; return session.value?.error ?? '' })
 const doc = computed(() => { void tick.value; return session.value?.document })
 const readOnly = computed(() => !editing.value || smallScreen.value)
-const shapeIcons = { terminal: Circle, rectangle: Square, rounded: RectangleHorizontal, diamond: Diamond, io: ArrowRightLeft, database: Database, text: Type }
-const paletteQuery = ref(''), paletteCategory = ref<FlowchartShapeCategory>('all')
-const paletteCategories: Array<{ key: FlowchartShapeCategory; label: string }> = [{ key: 'all', label: '全部' }, { key: 'flow', label: '流程' }, { key: 'basic', label: '基础' }, { key: 'data', label: '数据' }, { key: 'annotation', label: '标注' }]
-const paletteShapes = computed(() => filterFlowchartShapes(paletteQuery.value, paletteCategory.value))
+function browserStorage(): Storage | undefined { try { return localStorage } catch { return undefined } }
+const nodeLibrary = createNodeLibraryController(ownerKey, () => canvas.value, browserStorage())
+const workbenchPreferences = ref(nodeLibrary.preferences)
+const inspectorOpen = computed(() => !workbenchPreferences.value.inspectorCollapsed)
+function syncWorkbenchPreferences() { workbenchPreferences.value = nodeLibrary.preferences }
+function createShape(kind: FlowNodeKind) {
+  nodeLibrary.create(kind)
+  syncWorkbenchPreferences()
+}
+function startShapeDrag(kind: FlowNodeKind, event: DragEvent) {
+  nodeLibrary.dragStart(kind, event)
+  syncWorkbenchPreferences()
+}
+function toggleNodeLibrary() { nodeLibrary.toggleLibrary(); syncWorkbenchPreferences() }
+function toggleInspector() { nodeLibrary.toggleInspector(); syncWorkbenchPreferences() }
+const starterTemplates: Array<{ kind: 'sequence' | 'decision' | 'architecture'; title: string; description: string; preview: string }> = [
+  { kind: 'sequence', title: '顺序流程', description: '适合线性步骤和标准作业。', preview: '开始  →  处理  →  结束' },
+  { kind: 'decision', title: '条件分支', description: '从判断点分成两条路径。', preview: '开始  →  判断  ↗\n             ↘' },
+  { kind: 'architecture', title: '系统结构', description: '说明应用、服务与数据之间的关系。', preview: '前端  →  服务  →  数据库' },
+]
 const statusLabel = computed(() => status.value === 'saving' ? '正在保存…' : status.value === 'conflict' ? '版本冲突' : status.value === 'error' ? '尚未保存到云端' : dirty.value ? '有未保存修改' : doc.value ? '所有修改已保存' : '新建画布')
+const statusTone = computed<'default' | 'warning' | 'saving'>(() => status.value === 'saving' ? 'saving' : status.value === 'error' || status.value === 'conflict' ? 'warning' : 'default')
 function clearSaveTimers() { clearTimeout(idleTimer); clearTimeout(maxTimer); clearTimeout(retryTimer); idleTimer = maxTimer = retryTimer = undefined }
 function install(d: FlowchartDraft, saved: FlowchartDocument | null, creationKey = createClientId()) {
   session.value?.dispose(); clearSaveTimers()
@@ -52,32 +74,37 @@ function install(d: FlowchartDraft, saved: FlowchartDocument | null, creationKey
     changed: () => { if (active) tick.value++ },
     saved: document => { if (active) { emit('saved', document); void persist().catch(() => {}) } },
   })
-  selected.value = null; showProperties.value = false; propertiesPinned.value = false; loadingError.value = ''; tick.value++
+  selected.value = null; loadingError.value = ''; tick.value++
 }
-
-function openProperties(pin = false, focusLabel = false) {
-  if (readOnly.value) return
-  showProperties.value = true
-  if (pin) propertiesPinned.value = true
-  if (focusLabel) void nextTick(() => properties.value?.focusLabel())
+async function startNewDraft(next: FlowchartDraft) {
+  if (!active) return
+  starterImportError.value = ''
+  install(next, null)
+  editing.value = true
+  showStarter.value = false
+  await nextTick()
+  editorShell.value?.focusTitle()
 }
-
-function closeProperties() {
-  showProperties.value = false
-  propertiesPinned.value = false
-}
-
-function toggleProperties() {
-  if (showProperties.value) closeProperties()
-  else openProperties(true)
+function startBlank() { void startNewDraft({ title: props.initialTitle || '未命名流程图', domainId: props.domainId, favorite: false, diagram: props.initialDiagram ?? emptyDiagram() }) }
+function startTemplate(kind: 'sequence' | 'decision' | 'architecture') { void startNewDraft({ title: '未命名流程图', domainId: props.domainId, favorite: false, diagram: createTemplate(kind) }) }
+function chooseImport() { starterImportError.value = ''; importInput.value?.click() }
+async function importFile(event: Event) {
+  const input = event.target as HTMLInputElement, file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const imported = importFlowchartSource(await file.text())
+    await startNewDraft({ title: imported.title, domainId: props.domainId, favorite: false, diagram: imported.diagram })
+  } catch (cause) {
+    const message = (cause as Error).message
+    if (showStarter.value) starterImportError.value = message
+    notifyError(message)
+  }
 }
 
 function selectionChanged(cell: FlowNode | FlowEdge | null) {
   selected.value = cell
-  if (!cell && !propertiesPinned.value) showProperties.value = false
 }
-
-function editSelected() { openProperties(false, true) }
 function record(): LocalFlowchartDraft | null {
   const s = session.value
   if (!s || !ownerKey) return null
@@ -139,7 +166,7 @@ async function canLeave() {
     return confirmation.ask({ title: '修改尚未备份', message: '云端保存和本机草稿都未成功。离开会丢失这些修改。', detail: '建议取消离开，先导出流程图源文件。', confirmText: '仍然离开', cancelText: '继续编辑', tone: 'danger', icon: 'leave' })
   }
 }
-async function close() { if (await canLeave()) emit('close') }
+async function close() { starterImportError.value = ''; if (await canLeave()) emit('close') }
 async function reloadCloud() {
   const id = doc.value?.id ?? props.documentId
   if (!id) return
@@ -182,7 +209,7 @@ async function applyTemplate(kind: 'sequence' | 'decision' | 'architecture') {
 function notifyError(message: string) { notifications.notify(message, { type: 'warning' }) }
 async function exportFile(kind: 'source' | 'png' | 'svg') {
   if (exporting.value) return
-  showExport.value = false; exporting.value = true
+  exporting.value = true
   try {
     canvas.value?.flush()
     if (kind === 'source') downloadBlob(new Blob([exportFlowchartSource(draft.value.title, draft.value.diagram)], { type: 'application/json' }), `${draft.value.title || '流程图'}.flowchart.json`)
@@ -207,22 +234,48 @@ async function restoreRevision() {
 function shortcut(event: KeyboardEvent) {
   if (!readOnly.value && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && !showHistory.value && !showShare.value && !confirmation.current && !document.body.classList.contains('modal-open')) { event.preventDefault(); event.stopPropagation(); void save('MANUAL') }
 }
+function syncStarterEscapeListener(open: boolean) {
+  removeStarterEscapeListener?.()
+  removeStarterEscapeListener = open
+    ? attachStarterEscapeListener(document, () => showStarter.value, () => { void close() })
+    : undefined
+}
+function manualSave() {
+  if (readOnly.value) {
+    if (!smallScreen.value && session.value) editing.value = true
+    return
+  }
+  void save('MANUAL')
+}
 function beforeUnload(event: BeforeUnloadEvent) { if (dirty.value || status.value === 'saving') { void persist().catch(() => {}); event.preventDefault(); event.returnValue = '' } }
 function online() { if (dirty.value && status.value !== 'conflict') void save('AUTO') }
 const media = window.matchMedia('(max-width: 767px)')
 function mediaChange() { smallScreen.value = media.matches }
 onMounted(async () => {
   window.addEventListener('beforeunload', beforeUnload); window.addEventListener('online', online); media.addEventListener('change', mediaChange)
+  stopStarterEscapeWatch = watch(showStarter, syncStarterEscapeListener, { immediate: true, flush: 'sync' })
   await refreshDrafts()
+  let focusImportedTitle = false
   try {
     if (props.documentId) { const existing = await flowchartApi.get(props.documentId, lifetime.signal); if (active) install(copyDraft(existing), existing) }
-    else if (active) install({ title: props.initialTitle || '未命名流程图', domainId: props.domainId, favorite: false, diagram: props.initialDiagram ?? emptyDiagram() }, null)
+    else if (props.initialDiagram) {
+      install({ title: props.initialTitle || '未命名流程图', domainId: props.domainId, favorite: false, diagram: props.initialDiagram }, null)
+      editing.value = true
+      focusImportedTitle = true
+    }
   } catch (cause) { if (active) loadingError.value = (cause as Error).message }
-  finally { if (active) loading.value = false }
+  finally {
+    if (!active) return
+    loading.value = false
+    if (focusImportedTitle) {
+      await nextTick()
+      editorShell.value?.focusTitle()
+    }
+  }
 })
-function dispose() { if (!active) return; canvas.value?.flush(); void persist().catch(() => {}); active = false; session.value?.dispose(); clearSaveTimers(); clearTimeout(localTimer); lifetime.abort(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('online', online); media.removeEventListener('change', mediaChange); void writes.finally(() => storage?.close()).catch(() => {}) }
+function dispose() { if (!active) return; canvas.value?.flush(); void persist().catch(() => {}); active = false; session.value?.dispose(); clearSaveTimers(); clearTimeout(localTimer); stopStarterEscapeWatch?.(); removeStarterEscapeListener?.(); lifetime.abort(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('online', online); media.removeEventListener('change', mediaChange); void writes.finally(() => storage?.close()).catch(() => {}) }
 watch(() => auth.workspaceKey, key => { if (key !== ownerKey) dispose() }, { flush: 'sync' })
-watch(showProperties, (open, wasOpen) => {
+watch(inspectorOpen, (open, wasOpen) => {
   if (open && !wasOpen) void nextTick(() => canvas.value?.keepSelectedInView())
 })
 onBeforeRouteLeave(canLeave)
@@ -233,55 +286,29 @@ defineExpose({ canLeave })
 
 <template>
   <section class="flow-workspace" aria-label="流程图工作区" @keydown.capture="shortcut">
-    <header class="flow-header">
-      <button type="button" class="flow-back" aria-label="返回知识列表" @click="close"><ArrowLeft :size="18" /></button>
-      <span class="flow-header__icon"><Workflow :size="22" /></span>
-      <div class="flow-header__title"><input v-if="!readOnly && session" :value="draft.title" maxlength="200" aria-label="流程图标题" placeholder="输入流程图标题" @input="field('title', ($event.target as HTMLInputElement).value)" /><h1 v-else>{{ draft.title || '流程图' }}</h1><span role="status" :class="{ warning: status === 'error' || status === 'conflict' }"><LoaderCircle v-if="status === 'saving'" :size="12" class="spin" /><CloudCheck v-else :size="12" />{{ statusLabel }}</span></div>
-      <div class="flow-header__actions">
-        <button v-if="!readOnly" type="button" class="button button-ghost" @click="showTemplates = true"><LayoutTemplate :size="15" /><span>模板</span></button>
-        <button v-if="doc" type="button" class="button button-ghost" @click="history()"><History :size="15" /><span>历史</span></button>
-        <div class="flow-export"><button type="button" class="button button-ghost" :disabled="exporting || !session" :aria-expanded="showExport" @click="showExport = !showExport"><Download :size="15" /><span>{{ exporting ? '导出中' : '导出' }}</span></button><div v-if="showExport" class="flow-export__menu"><button type="button" @click="exportFile('png')">PNG 图片</button><button type="button" @click="exportFile('svg')">SVG 矢量图</button><button type="button" @click="exportFile('source')"><FileJson :size="14" />可编辑源文件</button></div></div>
-        <button type="button" class="button button-ghost" :disabled="!session || status === 'conflict'" @click="share"><Share2 :size="15" /><span>分享</span></button>
-        <button v-if="readOnly && !smallScreen && session" type="button" class="button button-primary" @click="editing = true"><Pencil :size="15" />编辑流程图</button>
-        <button v-if="!readOnly" type="button" class="button button-primary" :disabled="!session || status === 'saving' || status === 'conflict'" @click="save('MANUAL')"><Save :size="15" />保存</button>
-      </div>
-    </header>
+    <FlowchartStarter v-if="showStarter" :templates="starterTemplates" :import-error="starterImportError" @start-blank="startBlank" @start-template="startTemplate" @import="chooseImport" @close="close" />
+    <template v-else>
     <div v-if="session" class="flow-meta"><label><span>目录</span><select :value="draft.domainId ?? ''" :disabled="readOnly" @change="field('domainId', ($event.target as HTMLSelectElement).value || null)"><option value="">未分类</option><option v-for="domain in domains" :key="domain.id" :value="domain.id">{{ domain.name }}</option></select></label><button type="button" :disabled="readOnly" :class="{ active: draft.favorite }" @click="field('favorite', !draft.favorite)"><Heart :size="13" :fill="draft.favorite ? 'currentColor' : 'none'" />{{ draft.favorite ? '已收藏' : '收藏' }}</button><span>{{ draft.diagram.nodes.length }} 个图形 · {{ draft.diagram.edges.length }} 条连线</span><small v-if="localSaved">本机草稿已备份</small></div>
     <div v-if="smallScreen" class="flow-notice"><Smartphone :size="15" />手机支持查看和缩放，请在电脑上编辑图形。</div>
     <div v-if="error || localError" class="flow-notice warning" role="alert"><AlertCircle :size="16" /><span>{{ error || localError }}<small v-if="error && localError">{{ localError }}</small></span><template v-if="status === 'conflict'"><button type="button" @click="reloadCloud">读取云端版本</button><button type="button" @click="saveCopy">另存本机版本</button></template><button v-else-if="error" type="button" @click="save('MANUAL')">重试保存</button><button type="button" @click="exportFile('source')">导出备份</button></div>
     <div v-if="drafts.length" class="flow-drafts"><strong><RotateCcw :size="15" />发现本机草稿</strong><div v-for="record in drafts" :key="record.id"><span>{{ record.draft.title }} · {{ new Date(record.savedAt).toLocaleString() }}</span><button type="button" @click="recover(record)">恢复编辑</button><button type="button" @click="discard(record)">删除草稿</button></div></div>
     <div v-if="loading" class="flow-loading"><LoaderCircle :size="24" class="spin" />正在打开画布…</div>
     <div v-else-if="loadingError" class="flow-loading" role="alert"><AlertCircle :size="24" />{{ loadingError }}</div>
-    <div v-else-if="session" class="flow-body">
-      <aside v-if="!readOnly" class="flow-palette" aria-label="图形库">
-        <div class="flow-palette__heading"><div><h2>图形库</h2><p>拖入画布，或点击添加</p></div><ChevronDown :size="15" aria-hidden="true" /></div>
-        <label class="flow-palette__search"><Search :size="14" aria-hidden="true" /><input v-model="paletteQuery" type="search" placeholder="搜索图形" aria-label="搜索图形" /></label>
-        <div class="flow-palette__tabs" role="tablist" aria-label="图形分类"><button v-for="category in paletteCategories" :key="category.key" type="button" role="tab" :aria-selected="paletteCategory === category.key" :class="{ active: paletteCategory === category.key }" @click="paletteCategory = category.key">{{ category.label }}</button></div>
-        <div v-if="paletteShapes.length" class="flow-palette__grid">
-          <button v-for="shape in paletteShapes" :key="shape.kind" type="button" :aria-label="`添加${shape.label}`" :title="shape.hint" @mousedown.prevent="canvas?.startDrag(shape.kind, $event)" @click="canvas?.add(shape.kind)"><component :is="shapeIcons[shape.kind]" :size="25" :stroke-width="1.4" /><span>{{ shape.label }}</span></button>
-        </div>
-        <p v-else class="flow-palette__empty">没有匹配的图形</p>
-        <button type="button" class="flow-palette__add" @click="canvas?.add('rectangle')"><Square :size="14" />添加处理步骤</button>
-        <small>双击图形编辑文字<br />从连接点拖出连线</small>
-      </aside>
-      <FlowchartCanvas :key="String(readOnly)" ref="canvas" class="flow-workspace__canvas" :diagram="draft.diagram" :readonly="readOnly" :viewport-key="`${ownerKey}:${doc?.id || localId}`" :properties-open="showProperties" @change="diagramChanged" @select="selectionChanged" @edit-label="editSelected" @toggle-properties="toggleProperties" @error="notifyError" />
-      <Transition name="flow-properties">
-        <FlowchartProperties v-if="!readOnly && showProperties" id="flow-properties-panel" ref="properties" :selected="selected" :nodes="draft.diagram.nodes" :edges="draft.diagram.edges" @change="canvas?.updateCell($event)" @action="canvas?.action($event)" @select="canvas?.selectId($event)" @close="closeProperties" />
-      </Transition>
-    </div>
+    <FlowchartEditorShell v-else-if="session" :key="String(readOnly)" ref="editorShell" :draft="draft" :status-label="statusLabel" :status-tone="statusTone" :selected="selected" :preferences="workbenchPreferences" :read-only="readOnly" :viewport-key="`${ownerKey}:${doc?.id || localId}`" :exporting="exporting" :history-available="!!doc" :share-available="!!doc && status !== 'conflict'" :save-available="status !== 'conflict'" :can-edit="!smallScreen" @title="field('title', $event)" @toggle-library="toggleNodeLibrary" @toggle-inspector="toggleInspector" @change="diagramChanged" @selection="selectionChanged" @canvas-action="canvas?.action($event)" @library-create="createShape" @library-drag-start="startShapeDrag" @manual-save="manualSave" @templates="showTemplates = true" @history="history()" @export="exportFile" @share="share" @close="close" @error="notifyError" />
     <AppModal v-if="showTemplates" title="从模板开始" description="选择常用结构，再根据你的流程调整。" @close="showTemplates = false"><div class="flow-template-list"><button type="button" @click="applyTemplate('sequence')"><Workflow :size="32" /><strong>顺序流程</strong><span>开始 → 处理 → 结束</span></button><button type="button" @click="applyTemplate('decision')"><Diamond :size="32" /><strong>条件分支</strong><span>判断条件，分为两条路径</span></button><button type="button" @click="applyTemplate('architecture')"><Database :size="32" /><strong>系统结构</strong><span>前端 → 后端 → 数据库</span></button></div></AppModal>
     <AppModal v-if="showHistory" title="历史版本" description="自动检查点间隔 5 分钟，手动保存即时生成；保留最近 100 条。" wide @close="showHistory = false"><div v-if="revisionBusy" role="status">正在读取历史…</div><div class="flow-history"><div class="flow-history__list"><button v-for="revision in revisions" :key="revision.id" type="button" :class="{ active: revisionPreview?.id === revision.id }" @click="previewRevision(revision.id)"><strong>{{ revision.title }}</strong><small>{{ new Date(revision.createdAt).toLocaleString() }} · v{{ revision.documentVersion }}</small></button><p v-if="!revisions.length">暂无历史版本。</p><div class="flow-history__pages"><button type="button" :disabled="revisionPage === 0 || revisionBusy" @click="history(revisionPage - 1)">上一页</button><span>{{ revisionPage + 1 }}</span><button type="button" :disabled="revisions.length < 20 || revisionBusy" @click="history(revisionPage + 1)">下一页</button></div></div><div v-if="revisionPreview" class="flow-history__preview"><FlowchartCanvas :key="revisionPreview.id" :diagram="revisionPreview.diagram" readonly /><button type="button" class="button button-primary" :disabled="revisionBusy" @click="restoreRevision">恢复此版本</button></div></div></AppModal>
     <ShareDialog v-if="showShare && doc" :items="[{ type: 'FLOWCHART', id: doc.id, title: draft.title }]" @close="showShare = false" />
+    </template>
+    <input ref="importInput" class="flow-import-input" type="file" accept=".flowchart.json,application/json" tabindex="-1" aria-hidden="true" @change="importFile" />
   </section>
 </template>
 
 <style scoped>
 .flow-workspace { --flow-bg: #f4f7fb; --flow-surface: #fff; --flow-surface-alt: #f8fafc; --flow-border: #dbe3ee; --flow-border-strong: #c5d0df; --flow-text: #25364d; --flow-muted: #6b7b91; --flow-accent: #1677ff; --flow-accent-soft: #eaf3ff; min-width: 0; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--flow-border); border-radius: 10px; background: var(--flow-bg); overflow: hidden; box-shadow: 0 8px 28px rgba(39, 70, 110, .08); }
-:global(:root:not([data-theme='light'])) .flow-workspace { --flow-bg: #151a23; --flow-surface: #1d2430; --flow-surface-alt: #202936; --flow-border: #303b4b; --flow-border-strong: #465468; --flow-text: #edf2fb; --flow-muted: #9aa8ba; --flow-accent: #70a4ff; --flow-accent-soft: #243a5e; box-shadow: 0 8px 28px rgba(0, 0, 0, .24); }
+.flow-import-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+:global(:root[data-theme='dark'] .flow-workspace) { --flow-bg: #151a23; --flow-surface: #1d2430; --flow-surface-alt: #202936; --flow-border: #303b4b; --flow-border-strong: #465468; --flow-text: #edf2fb; --flow-muted: #9aa8ba; --flow-accent: #70a4ff; --flow-accent-soft: #243a5e; box-shadow: 0 8px 28px rgba(0, 0, 0, .24); }
 .flow-header { display: flex; align-items: center; gap: 10px; min-height: 58px; flex: 0 0 auto; padding: 10px 14px; border-bottom: 1px solid var(--flow-border); background: var(--flow-surface); }.flow-back { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 0; background: transparent; color: var(--flow-muted); border-radius: 6px; cursor: pointer; transition: color .15s ease, background .15s ease; }.flow-back:hover { color: var(--flow-text); background: var(--flow-surface-alt); }.flow-back:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 2px; }.flow-header__icon { display: grid; place-items: center; flex: 0 0 auto; color: var(--flow-accent); width: 34px; height: 34px; border-radius: 7px; background: var(--flow-accent-soft); }.flow-header__title { flex: 1 1 auto; min-width: 0; overflow: hidden; }.flow-header__title input,.flow-header__title h1 { display: block; width: 100%; margin: 0; padding: 0; overflow: hidden; border: 0; background: transparent; color: var(--flow-text); font: 600 15px/1.5 inherit; text-overflow: ellipsis; white-space: nowrap; }.flow-header__title input:focus { outline: none; }.flow-header__title span { display: flex; align-items: center; gap: 4px; max-width: 100%; margin-top: 2px; overflow: hidden; font-size: 11px; color: var(--flow-muted); text-overflow: ellipsis; white-space: nowrap; }.flow-header__actions { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; max-width: 100%; gap: 3px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }.flow-header__actions::-webkit-scrollbar { display: none; }.flow-header__actions .button { min-height: 32px; flex: 0 0 auto; padding: 6px 9px; color: var(--flow-muted); border-radius: 6px; font-size: 12px; }.flow-header__actions .button:hover { color: var(--flow-text); background: var(--flow-surface-alt); }.flow-header__actions .button:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 1px; }.flow-header__actions .button-primary { color: #fff; background: var(--flow-accent); }.flow-meta { display: flex; align-items: center; flex: 0 0 auto; flex-wrap: wrap; gap: 12px; min-height: 34px; padding: 6px 14px; overflow: hidden; font-size: 11px; color: var(--flow-muted); border-bottom: 1px solid var(--flow-border); background: var(--flow-surface); }.flow-meta label { display: flex; align-items: center; flex: 0 0 auto; gap: 7px; }.flow-meta select { max-width: 180px; min-width: 0; border: 0; color: var(--flow-text); font: inherit; background: transparent; }.flow-meta > span { flex: 0 0 auto; white-space: nowrap; }.flow-meta button { display: flex; gap: 5px; align-items: center; flex: 0 0 auto; border: 0; font: inherit; color: var(--flow-muted); background: transparent; cursor: pointer; }.flow-meta button.active { color: var(--flow-accent); }.flow-meta small { max-width: 35%; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-body { position: relative; display: flex; flex: 1 1 auto; height: auto; min-height: 0; min-width: 0; overflow: hidden; }.flow-workspace__canvas { flex: 1 1 auto; min-width: 0; min-height: 0; }.flow-palette { width: 176px; flex: 0 0 176px; min-height: 0; padding: 16px 12px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; border-right: 1px solid var(--flow-border); background: var(--flow-surface); }.flow-palette h2 { font-size: 12px; margin: 0 0 4px; color: var(--flow-text); }.flow-palette p { font-size: 10px; color: var(--flow-muted); margin: 0 0 14px; }.flow-palette button { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; gap: 6px; min-height: 62px; padding: 9px 6px; margin-bottom: 7px; border: 1px solid var(--flow-border); border-radius: 7px; background: var(--flow-surface); color: var(--flow-muted); cursor: grab; font-size: 11px; transition: border-color .15s ease, color .15s ease, background .15s ease, box-shadow .15s ease; }.flow-palette button:hover { color: var(--flow-accent); border-color: #8bbcff; background: var(--flow-accent-soft); box-shadow: 0 2px 8px rgba(22,119,255,.12); }.flow-palette button:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 2px; }.flow-palette small { display: block; font-size: 10px; line-height: 1.8; color: var(--flow-muted); padding-top: 7px; }.flow-palette .flow-palette__add { flex-direction: row; min-height: 36px; font-size: 10px; cursor: pointer; }
-.flow-properties-enter-active, .flow-properties-leave-active { overflow: hidden; transition: opacity .18s ease, transform .18s ease, width .22s ease, flex-basis .22s ease, padding .22s ease, border-color .22s ease; }
-.flow-properties-enter-from, .flow-properties-leave-to { width: 0 !important; flex-basis: 0 !important; padding-right: 0 !important; padding-left: 0 !important; border-left-color: transparent !important; opacity: 0; transform: translateX(12px); }
 .flow-export { position: relative; }.flow-export__menu { position: absolute; top: calc(100% + 6px); right: 0; width: 160px; padding: 5px; z-index: 10; border: 1px solid var(--flow-border); border-radius: 7px; box-shadow: 0 8px 22px rgba(32,55,88,.16); background: var(--flow-surface); }.flow-export__menu button { width: 100%; padding: 9px; display: flex; gap: 6px; border: 0; background: transparent; color: var(--flow-text); text-align: left; font-size: 12px; cursor: pointer; border-radius: 4px; }.flow-export__menu button:hover { background: var(--flow-accent-soft); }
 .flow-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 18px; font-size: 12px; color: var(--flow-text); background: var(--flow-surface-alt); border-bottom: 1px solid var(--flow-border); }.warning { color: var(--danger) !important; }.flow-notice span { flex: 1; }.flow-notice small { display: block; margin-top: 5px; }.flow-notice button,.flow-drafts button { background: var(--flow-surface); border: 1px solid var(--flow-border); border-radius: 5px; padding: 6px 9px; color: var(--flow-text); cursor: pointer; font: inherit; }
 .flow-drafts { padding: 12px 18px; font-size: 12px; background: var(--flow-accent-soft); }.flow-drafts strong { display: flex; gap: 6px; align-items: center; color: var(--flow-accent); }.flow-drafts>div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 9px; }.flow-drafts span { flex: 1; min-width: 160px; color: var(--flow-text); }.flow-loading { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--flow-muted); }
@@ -305,9 +332,6 @@ defineExpose({ canLeave })
 .flow-history__preview { min-height: 360px; }
 .flow-history__preview :deep(.flow-canvas) { min-height: 360px; height: 360px; }
 :global(.writing-mode) .flow-workspace { border: 0; border-radius: 0; box-shadow: none; }
-@media (prefers-reduced-motion: reduce) {
-  .flow-properties-enter-active, .flow-properties-leave-active { transition-duration: 0.01ms; }
-}
 .flow-header__actions .button span { white-space: nowrap; }
 .flow-header__actions { overflow: visible; }
 @media (min-width: 768px) and (max-width: 900px) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FLOWCHART_SHAPES, filterFlowchartShapes, type FlowchartShapeCategory, classifyCanvasWheel, normalizeCanvasWheelDelta, shouldOpenProperties } from '../src/utils/flowchartEditor.ts'
+import { FLOWCHART_SHAPES, filterFlowchartShapes, type FlowchartShapeCategory, classifyCanvasWheel, normalizeCanvasWheelDelta, runCanvasExportCycle, sanitizeFlowchartSvgMarkup, shouldOpenProperties } from '../src/utils/flowchartEditor.ts'
 import {
   createEdgeDragSnapshot,
   describeOrthogonalSegments,
@@ -29,6 +29,24 @@ test('only explicit edit gestures open the properties panel', () => {
   assert.equal(shouldOpenProperties('single'), false)
   assert.equal(shouldOpenProperties('double'), true)
   assert.equal(shouldOpenProperties('context'), true)
+})
+
+test('canvas export overlay cycle restores the mounted minimap after a failed export', async () => {
+  const hiddenStates: boolean[] = []
+  await assert.rejects(
+    runCanvasExportCycle(hidden => hiddenStates.push(hidden), async () => {
+      assert.equal(hiddenStates.at(-1), true)
+      throw new Error('export failed')
+    }),
+    /export failed/,
+  )
+  assert.deepEqual(hiddenStates, [true, false])
+})
+
+test('serialized SVG export omits every flowchart workbench overlay', () => {
+  const serialized = sanitizeFlowchartSvgMarkup('<svg><g class="x6-node"><rect /></g><foreignObject class="flow-canvas__tools"><button>缩放</button></foreignObject><g class="flow-canvas__context"><g class="nested">操作</g></g><g class="flow-canvas__edge-editor"><path /></g><g class="flow-canvas__mini"><rect /></g><text class="flow-canvas__hint">帮助</text><foreignObject class="inspector-panel"><aside>检查器</aside></foreignObject></svg>')
+  assert.match(serialized, /class="x6-node"/)
+  for (const overlay of ['flow-canvas__tools', 'flow-canvas__context', 'flow-canvas__edge-editor', 'flow-canvas__mini', 'flow-canvas__hint', 'inspector-panel']) assert.doesNotMatch(serialized, new RegExp(overlay))
 })
 
 test('shape palette groups all supported shapes into ProcessOn-style categories', () => {

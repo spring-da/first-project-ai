@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { IDBFactory } from 'fake-indexeddb'
 import { createFlowchartDraftStorage } from '../src/utils/flowchartDrafts.ts'
-import { emptyDiagram } from '../src/utils/flowcharts.ts'
+import { createTemplate, emptyDiagram, validateDiagram } from '../src/utils/flowcharts.ts'
 
 test('drafts isolate actors, workspace targets, documents and simultaneous sessions', async () => {
   const storage = createFlowchartDraftStorage(new IDBFactory())
@@ -17,4 +17,10 @@ test('drafts isolate actors, workspace targets, documents and simultaneous sessi
   assert.equal((await storage.list('admin:member-1')).length, 1)
   assert.equal((await storage.list('admin:member-2')).length, 1)
   storage.close()
+})
+
+test('every starter template remains schema-valid', () => {
+  for (const kind of ['sequence', 'decision', 'architecture'] as const) {
+    assert.doesNotThrow(() => validateDiagram(createTemplate(kind)))
+  }
 })

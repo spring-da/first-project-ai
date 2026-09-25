@@ -7,7 +7,16 @@ import { edgeToCell } from '../src/utils/flowchartAdapter.ts'
 test('edge adapter uses rounded orthogonal runtime styling for editable paths', () => {
   const edge = makeEdge('source', 'target')
   const cell = edgeToCell(edge)
-  assert.deepEqual(cell.router, { name: 'manhattan', args: { padding: 24, step: 16 } })
+  assert.deepEqual(cell.router, {
+    name: 'manhattan',
+    args: {
+      padding: 12,
+      step: 8,
+      startDirections: ['right'],
+      endDirections: ['left'],
+      excludeTerminals: ['source', 'target'],
+    },
+  })
   assert.deepEqual(cell.connector, { name: 'rounded', args: { radius: 8 } })
 })
 

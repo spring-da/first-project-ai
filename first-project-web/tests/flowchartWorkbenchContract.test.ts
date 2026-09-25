@@ -1,0 +1,108 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import test from 'node:test'
+import * as editorState from '../src/utils/flowchartEditorState.ts'
+
+const source = readFileSync(new URL('../src/components/flowcharts/InspectorPanel.vue', import.meta.url), 'utf8')
+const shellSource = readFileSync(new URL('../src/components/flowcharts/FlowchartEditorShell.vue', import.meta.url), 'utf8')
+const workspaceSource = readFileSync(new URL('../src/components/flowcharts/FlowchartWorkspace.vue', import.meta.url), 'utf8')
+
+type NodeLibraryControllerFactory = (ownerKey: string, canvas: () => { add: (kind: 'rectangle' | 'diamond' | 'io') => void } | undefined, storage?: Pick<Storage, 'getItem' | 'setItem'>) => {
+  key: string
+  preferences: { libraryCollapsed: boolean; recentKinds: string[] }
+  create: (kind: 'rectangle' | 'diamond' | 'io') => void
+  dragStart: (kind: 'rectangle' | 'diamond' | 'io', event: DragEvent) => void
+  toggleLibrary: () => void
+  toggleInspector: () => void
+}
+
+test('node-library workspace actions forward creates and persist drag recents and collapse state', () => {
+  const createNodeLibraryController = (editorState as Record<string, unknown>).createNodeLibraryController as NodeLibraryControllerFactory
+  assert.equal(typeof createNodeLibraryController, 'function')
+  const writes: Array<[string, string]> = []
+  const storage = { getItem: () => null, setItem: (key: string, value: string) => writes.push([key, value]) }
+  const created: string[] = []
+  const controller = createNodeLibraryController('member-42', () => ({ add: kind => created.push(kind) }), storage)
+
+  controller.create('diamond')
+  controller.dragStart('io', {} as DragEvent)
+  controller.toggleLibrary()
+  controller.toggleInspector()
+
+  assert.deepEqual(created, ['diamond'])
+  assert.equal(controller.key, 'devnest-flowchart-workbench:member-42')
+  assert.deepEqual(controller.preferences, { libraryCollapsed: true, inspectorCollapsed: true, recentKinds: ['io', 'diamond'] })
+  assert.deepEqual(JSON.parse(writes.at(-1)![1]), controller.preferences)
+})
+
+test('native canvas drops accept only supported node-library payloads', () => {
+  const readNativeFlowNodeKind = (editorState as Record<string, unknown>).readNativeFlowNodeKind as ((transfer: Pick<DataTransfer, 'getData'> | null) => string | null)
+  assert.equal(typeof readNativeFlowNodeKind, 'function')
+  assert.equal(readNativeFlowNodeKind({ getData: type => type === 'application/x-devnest-flow-node' ? 'diamond' : '' }), 'diamond')
+  assert.equal(readNativeFlowNodeKind({ getData: () => 'unknown' }), null)
+  assert.equal(readNativeFlowNodeKind(null), null)
+})
+
+test('node-library actions stay usable when workspace preference storage is unavailable', () => {
+  const createNodeLibraryController = (editorState as Record<string, unknown>).createNodeLibraryController as NodeLibraryControllerFactory
+  const storage = { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } }
+  const controller = createNodeLibraryController('member-42', () => undefined, storage)
+
+  controller.dragStart('rectangle', {} as DragEvent)
+  controller.toggleLibrary()
+
+  assert.deepEqual(controller.preferences, { libraryCollapsed: true, inspectorCollapsed: false, recentKinds: ['rectangle'] })
+})
+
+test('inspector has canvas help, node, edge and collapsed states', () => {
+  assert.match(source, /v-if="!selected"/)
+  assert.match(source, /v-else-if="'width' in selected"/)
+  assert.match(source, /aria-label="检查器"/)
+})
+
+test('inspector exposes typed updates and a collapse action', () => {
+  assert.match(source, /change: \[cell: FlowNode \| FlowEdge\]/)
+  assert.match(source, /emit\('toggle'\)/)
+})
+
+test('clearing the inspector selection clears the canvas selection path', () => {
+  const replaceFlowchartSelection = (editorState as Record<string, unknown>).replaceFlowchartSelection as <Cell extends { id: string }>(graph: { getCellById: (id: string) => Cell | null; resetSelection: (cells: Cell[]) => void }, id: string | null) => Cell | undefined
+  assert.equal(typeof replaceFlowchartSelection, 'function')
+
+  const node = { id: 'node-1' }
+  let selected = [node]
+  const graph = {
+    getCellById: (id: string) => id === node.id ? node : null,
+    resetSelection: (cells: Array<typeof node>) => { selected = cells },
+  }
+
+  assert.equal(replaceFlowchartSelection(graph, null), undefined)
+  assert.deepEqual(selected, [])
+  assert.match(source, /emit\('select',\s*selectionValue\(\$event\)\)/)
+})
+
+test('editor shell owns three-column composition', () => {
+  assert.match(shellSource, /class="flowchart-editor-shell"/)
+  assert.match(shellSource, /<NodeLibraryPanel/)
+  assert.match(shellSource, /<FlowchartCanvas/)
+  assert.match(shellSource, /<InspectorPanel/)
+  assert.match(shellSource, /grid-template-columns:\s*var\(--library-width\) minmax\(0, 1fr\) var\(--inspector-width\)/)
+})
+
+test('workspace retains persistence but delegates visual composition', () => {
+  assert.match(workspaceSource, /<FlowchartEditorShell/)
+  assert.match(workspaceSource, /new FlowchartSession/)
+  assert.doesNotMatch(workspaceSource, /class="flow-palette"/)
+})
+
+test('editor shell keeps keyboard-reachable panel rails and document actions around the canvas', () => {
+  assert.match(shellSource, /:collapsed="preferences\.libraryCollapsed"/)
+  assert.match(shellSource, /:collapsed="preferences\.inspectorCollapsed"/)
+  assert.match(shellSource, /@toggle="emit\('toggle-library'\)"/)
+  assert.match(shellSource, /@toggle="emit\('toggle-inspector'\)"/)
+  assert.match(workspaceSource, /@manual-save="manualSave"/)
+  assert.match(workspaceSource, /@templates="showTemplates = true"/)
+  assert.match(workspaceSource, /@history="history\(\)"/)
+  assert.match(workspaceSource, /@export="exportFile"/)
+  assert.match(shellSource, /defineExpose\(\{ canvas, focusTitle/)
+})

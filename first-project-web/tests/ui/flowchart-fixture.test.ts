@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { createFlowchartFixture, fixtureDiagram, seedFlowcharts } from './flowchart-fixture.ts'
 import { validateDiagram } from '../../src/utils/flowcharts.ts'
 
@@ -39,4 +40,27 @@ test('fixture API keeps bodies lazy, searches labels, enforces versions and pres
   assert.equal((await call('/flowcharts/fixture-flowchart/restore', 'POST')).status, 200)
   assert.deepEqual(invalidations, ['owner:fixture-flowchart'])
   assert.equal((await (await call('/flowcharts/trash')).json()).length, 0)
+})
+
+test('fixture keeps offline, conflict and create-retry scenarios deterministic for the workbench', async () => {
+  const makeFixture = (scenario: string) => {
+    const source = seedFlowcharts(1)
+    return createFlowchartFixture({ scenario: new URLSearchParams(scenario), sources: () => source, saveFailed: () => false, historyFailed: () => false, changed: () => {}, invalidateShares: () => {} })
+  }
+  const offline = makeFixture('flowchart-offline=1')
+  await assert.rejects(
+    offline.handle('/flowcharts', { method: 'POST', body: JSON.stringify({ title: '离线新流程', domainId: null, favorite: false, diagram: fixtureDiagram(), creationKey: '11111111-2222-4333-8444-555555555555' }) }, 'owner'),
+    /网络连接已断开/,
+  )
+
+  const conflict = makeFixture('flowchart-conflict=1')
+  const current = await (await conflict.handle('/flowcharts/fixture-flowchart', {}, 'owner'))!.json()
+  const response = await conflict.handle('/flowcharts/fixture-flowchart', { method: 'PUT', body: JSON.stringify({ title: current.title, domainId: current.domainId, favorite: current.favorite, diagram: current.diagram, expectedVersion: current.version, saveMode: 'MANUAL' }) }, 'owner')
+  assert.equal(response!.status, 409)
+  assert.equal(conflict.stats.conflicts, 1)
+
+  const controlsSource = readFileSync(new URL('./notifications-editor.ts', import.meta.url), 'utf8')
+  for (const label of ['打开新建流程图起始面板', '起始面板：空白画布', '起始面板：顺序流程模板', '起始面板：条件分支模板', '起始面板：系统结构模板', '关闭流程图起始面板']) {
+    assert.match(controlsSource, new RegExp(label))
+  }
 })

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
 import {
-  createShareBundle, getPoolContent, getPublicBundleContent, getPublicShareBundle,
-  getShareBundle, listShareBundles, listSharedPool, publishToPool, addShareBundleItems, updateShareBundleTitle,
-  removeShareBundleItem, revokeShareBundles, withdrawFromPool,
+  addShareBundleItems, createShareBundle, getPoolContent, getPublicBundleContent, getPublicShareBundle,
+  getShareBundle, getShareBundleToken, listShareBundles, listSharedPool, publishToPool,
+  removeShareBundleItem, renameShareBundle, revokeShareBundles, withdrawFromPool,
 } from '../src/services/sharing.ts'
 
 beforeEach(() => {
@@ -15,7 +15,7 @@ beforeEach(() => {
 })
 afterEach(() => { Reflect.deleteProperty(globalThis, 'window'); Reflect.deleteProperty(globalThis, 'localStorage') })
 
-test('sharing creation sends only resource references and preserves the one-time token response', async (context) => {
+test('sharing creation sends only resource references and returns the initial token', async (context) => {
   const calls: Array<{ url: string; method: string; body: unknown }> = []
   context.mock.method(globalThis, 'fetch', async (url, options) => {
     calls.push({ url: String(url), method: options.method, body: JSON.parse(options.body) })
@@ -50,20 +50,6 @@ test('sharing list requests encode filters and all reads bypass browser cache', 
   ])
 })
 
-test('bundle management updates titles and appends references without creating a new link', async (context) => {
-  const calls: Array<[string, string, unknown]> = []
-  context.mock.method(globalThis, 'fetch', async (url, options) => {
-    calls.push([String(url), options.method, options.body ? JSON.parse(options.body) : null])
-    return new Response(null, { status: 204 })
-  })
-  await updateShareBundleTitle('link/id', '新标题')
-  await addShareBundleItems('link/id', [{ type: 'MARKDOWN', id: 'doc-1' }])
-  assert.deepEqual(calls, [
-    ['/api/v1/sharing/links/link%2Fid', 'PATCH', { title: '新标题' }],
-    ['/api/v1/sharing/links/link%2Fid/items', 'POST', { items: [{ type: 'MARKDOWN', id: 'doc-1' }] }],
-  ])
-})
-
 test('public bundle reads require no session and never send account authorization', async (context) => {
   context.mock.method(localStorage, 'getItem', () => null)
   const urls: string[] = []
@@ -92,6 +78,26 @@ test('withdraw and revoke submit one batch request and removing one bundle item 
     ['/api/v1/sharing/pool/revoke', 'POST', { ids: ['a', 'b'] }],
     ['/api/v1/sharing/links/revoke', 'POST', { ids: ['x', 'y'] }],
     ['/api/v1/sharing/links/link%2Fid/items/item%2Fid', 'DELETE', null],
+  ])
+})
+
+test('link management renames a bundle and adds only resource references', async (context) => {
+  const calls: Array<[string, string, unknown]> = []
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push([String(url), options.method, options.body ? JSON.parse(options.body) : null])
+    return Response.json(String(url).endsWith('/token')
+      ? { token: 'recoverable-token', regenerated: false }
+      : String(url).endsWith('/items')
+      ? { link: { id: 'link/id', title: '新名称' }, items: [] }
+      : { id: 'link/id', title: '新名称' })
+  })
+  await renameShareBundle('link/id', '新名称')
+  await addShareBundleItems('link/id', [{ type: 'MARKDOWN', id: 'document', title: '本地标题不应发送' }])
+  assert.deepEqual(await getShareBundleToken('link/id'), { token: 'recoverable-token', regenerated: false })
+  assert.deepEqual(calls, [
+    ['/api/v1/sharing/links/link%2Fid', 'PATCH', { title: '新名称' }],
+    ['/api/v1/sharing/links/link%2Fid/items', 'POST', { items: [{ type: 'MARKDOWN', id: 'document' }] }],
+    ['/api/v1/sharing/links/link%2Fid/token', 'POST', null],
   ])
 })
 

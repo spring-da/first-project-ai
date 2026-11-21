@@ -7,18 +7,25 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.web.ErrorResponse;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.LinkedHashMap;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(ImageStorageException.class)
     ProblemDetail handleImageStorage(ImageStorageException exception, HttpServletRequest request) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
@@ -93,10 +100,33 @@ public class GlobalExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleUnreadableBody(HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "请求体格式错误", request);
+    }
+
+    @ExceptionHandler(TypeMismatchException.class)
+    ProblemDetail handleTypeMismatch(HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "请求参数格式错误", request);
+    }
+
+    @ExceptionHandler(Exception.class)
+    ProblemDetail handleUnexpected(Exception exception, HttpServletRequest request) {
+        if (exception instanceof ErrorResponse errorResponse) {
+            var detail = errorResponse.getBody();
+            if (detail.getInstance() == null) detail.setInstance(URI.create(request.getRequestURI()));
+            detail.setProperty("requestId", RequestCorrelationFilter.requestId(request));
+            return detail;
+        }
+        LOGGER.error("Unhandled request failure: {} {}", request.getMethod(), request.getRequestURI(), exception);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "服务器暂时无法处理请求，请稍后重试。", request);
+    }
+
     private ProblemDetail problem(HttpStatus status, String message, HttpServletRequest request) {
         var detail = ProblemDetail.forStatusAndDetail(status, message);
         detail.setTitle(status.getReasonPhrase());
         detail.setInstance(URI.create(request.getRequestURI()));
+        detail.setProperty("requestId", RequestCorrelationFilter.requestId(request));
         return detail;
     }
 }

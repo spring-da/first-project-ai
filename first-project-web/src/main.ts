@@ -7,7 +7,7 @@ import { router } from './router'
 import { useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
 import { useWorkspaceStore } from './stores/workspace'
-import { SESSION_KEY } from './services/api'
+import { SESSION_KEY, SESSION_LOGOUT_KEY } from './services/api'
 import { installWheelScrollChaining } from './utils/scrollChaining'
 
 const app = createApp(App)
@@ -31,7 +31,8 @@ function returnToLogin() {
 
 window.addEventListener('devnest:unauthorized', returnToLogin)
 const syncLogoutAcrossTabs = (event: StorageEvent) => {
-  if (event.key === SESSION_KEY && event.newValue === null && auth.isAuthenticated) returnToLogin()
+  const legacySessionRemoved = event.key === SESSION_KEY && event.newValue === null
+  if ((legacySessionRemoved || event.key === SESSION_LOGOUT_KEY) && auth.isAuthenticated) returnToLogin()
 }
 window.addEventListener('storage', syncLogoutAcrossTabs)
 if (import.meta.hot) import.meta.hot.dispose(() => window.removeEventListener('storage', syncLogoutAcrossTabs))

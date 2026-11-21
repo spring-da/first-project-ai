@@ -2,7 +2,7 @@ import { resetWorkspaceRequests, setRequestWorkspace } from '../services/workspa
 import { clearMarkdownImageCache } from '../services/markdownImages'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { apiRequest, jsonBody, readStoredSession, writeStoredSession, SESSION_KEY } from '../services/api'
+import { apiRequest, clearStoredSession, jsonBody, readStoredSession, writeStoredSession } from '../services/api'
 import type { AdminWorkspaceAccount, AuthResponse, AuthSession, AuthUser } from '../types'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -128,7 +128,7 @@ export const useAuthStore = defineStore('auth', () => {
     clearMarkdownImageCache()
     resetWorkspaceRequests()
     workspaceMember.value = null
-    try { localStorage.removeItem(SESSION_KEY) } catch { /* Logout must work without storage. */ }
+    clearStoredSession()
     session.value = null
     error.value = ''
   }

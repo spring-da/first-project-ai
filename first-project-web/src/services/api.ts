@@ -3,6 +3,7 @@ import type { AuthSession } from '../types'
 import { beginRequest } from './requestActivity.ts'
 
 export const SESSION_KEY = 'devnest_web_session_v1'
+export const SESSION_LOGOUT_KEY = 'devnest_web_session_logout_v1'
 
 const configuredBaseUrl = import.meta.env?.VITE_API_BASE_URL?.trim()
 const API_BASE_URL = (configuredBaseUrl || '/api/v1').replace(/\/$/, '')
@@ -10,51 +11,100 @@ const API_BASE_URL = (configuredBaseUrl || '/api/v1').replace(/\/$/, '')
 export class ApiError extends Error {
   readonly status?: number
   readonly code?: string
+  readonly requestId?: string
 
-  constructor(message: string, status?: number, code?: string) {
+  constructor(message: string, status?: number, code?: string, requestId?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.requestId = requestId
   }
 }
 
 interface ProblemPayload {
   detail?: string
   code?: string
+  requestId?: string
+}
+
+function errorMessageWithReference(message: string, status: number, requestId?: string): string {
+  return status >= 500 && requestId ? `${message}（请求编号：${requestId}）` : message
+}
+
+function browserStorage(kind: 'session' | 'local'): Storage | null {
+  try {
+    if (kind === 'session') return typeof sessionStorage === 'undefined' ? null : sessionStorage
+    return typeof localStorage === 'undefined' ? null : localStorage
+  } catch {
+    return null
+  }
+}
+
+function removeSessionFrom(storage: Storage | null): void {
+  try { storage?.removeItem(SESSION_KEY) } catch { /* Storage may be disabled. */ }
+}
+
+export function clearStoredSession(): void {
+  removeSessionFrom(browserStorage('session'))
+  const legacyStorage = browserStorage('local')
+  removeSessionFrom(legacyStorage)
+  try { legacyStorage?.setItem(SESSION_LOGOUT_KEY, String(Date.now())) } catch { /* Cross-tab notification is best effort. */ }
 }
 
 export function writeStoredSession(session: AuthSession): void {
+  const value = JSON.stringify(session)
+  const transientStorage = browserStorage('session')
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    if (transientStorage) {
+      transientStorage.setItem(SESSION_KEY, value)
+      removeSessionFrom(browserStorage('local'))
+      return
+    }
+  } catch { /* Fall back for browsers that expose but block sessionStorage. */ }
+  try {
+    const legacyStorage = browserStorage('local')
+    if (!legacyStorage) throw new Error('storage unavailable')
+    legacyStorage.setItem(SESSION_KEY, value)
   } catch {
-    throw new ApiError('浏览器无法保存登录状态，请允许本站使用本地存储后重试', undefined, 'SESSION_STORAGE_UNAVAILABLE')
+    throw new ApiError('浏览器无法保存登录状态，请允许本站使用会话存储后重试', undefined, 'SESSION_STORAGE_UNAVAILABLE')
   }
 }
 
 export function readStoredSession(): AuthSession | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (!raw) return null
-    const session = JSON.parse(raw) as AuthSession
-    if (!session.accessToken || session.tokenType !== 'Bearer' || !session.user?.id || !session.user?.email
-      || !Number.isFinite(session.expiresAt)) throw new Error('invalid session')
-    if (session.expiresAt <= Date.now()) {
-      localStorage.removeItem(SESSION_KEY)
-      return null
+  const transientStorage = browserStorage('session')
+  const legacyStorage = browserStorage('local')
+  for (const storage of [transientStorage, legacyStorage]) {
+    if (!storage || (storage === legacyStorage && storage === transientStorage)) continue
+    try {
+      const raw = storage.getItem(SESSION_KEY)
+      if (!raw) continue
+      const session = JSON.parse(raw) as AuthSession
+      if (!session.accessToken || session.tokenType !== 'Bearer' || !session.user?.id || !session.user?.email
+        || !Number.isFinite(session.expiresAt)) throw new Error('invalid session')
+      if (session.expiresAt <= Date.now()) {
+        clearStoredSession()
+        return null
+      }
+      if (storage === legacyStorage && transientStorage && transientStorage !== legacyStorage) {
+        try {
+          transientStorage.setItem(SESSION_KEY, raw)
+          removeSessionFrom(legacyStorage)
+        } catch { /* Keep the valid legacy session until this tab can migrate it. */ }
+      }
+      return {
+        ...session,
+        user: {
+          ...session.user,
+          role: session.user.role === 'ADMIN' ? 'ADMIN' : 'USER',
+          mustChangePassword: session.user.mustChangePassword === true,
+        },
+      }
+    } catch {
+      removeSessionFrom(storage)
     }
-    return {
-      ...session,
-      user: {
-        ...session.user,
-        role: session.user.role === 'ADMIN' ? 'ADMIN' : 'USER',
-        mustChangePassword: session.user.mustChangePassword === true,
-      },
-    }
-  } catch {
-    try { localStorage.removeItem(SESSION_KEY) } catch { /* Storage may be disabled. */ }
-    return null
   }
+  return null
 }
 
 async function readJsonPayload(response: Response): Promise<ProblemPayload | unknown | null> {
@@ -69,7 +119,7 @@ async function readJsonPayload(response: Response): Promise<ProblemPayload | unk
 }
 
 function expireSession() {
-  try { localStorage.removeItem(SESSION_KEY) } catch { /* Storage may be disabled. */ }
+  clearStoredSession()
   window.dispatchEvent(new CustomEvent('devnest:unauthorized'))
 }
 
@@ -118,8 +168,9 @@ export async function apiRequest<T>(
     context?.signal.throwIfAborted()
     if (!response.ok) {
       const message = payload?.detail || (response.status === 401 && options.authenticated === false ? '邮箱或密码不正确，请重试。' : `请求失败（${response.status}）`)
+      const requestId = payload?.requestId || response.headers.get('X-Request-ID') || undefined
       handleAuthError(response.status, payload?.code, options.authenticated !== false)
-      throw new ApiError(message, response.status, payload?.code)
+      throw new ApiError(errorMessageWithReference(message, response.status, requestId), response.status, payload?.code, requestId)
     }
     return payload as T
   } catch (error) {
@@ -172,8 +223,10 @@ export async function apiDownload(
     if (!response.ok) {
       const payload = await readJsonPayload(response) as ProblemPayload | null
       context?.signal.throwIfAborted()
+      const requestId = payload?.requestId || response.headers.get('X-Request-ID') || undefined
       handleAuthError(response.status, payload?.code, options.authenticated !== false)
-      throw new ApiError(payload?.detail || `下载失败（${response.status}）`, response.status, payload?.code)
+      const message = payload?.detail || `下载失败（${response.status}）`
+      throw new ApiError(errorMessageWithReference(message, response.status, requestId), response.status, payload?.code, requestId)
     }
 
     const disposition = response.headers.get('content-disposition') ?? ''

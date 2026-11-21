@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch, nextTick, reactive, shallowRef } from 'vue'
-import { Graph, History, Selection, Snapline, Clipboard, Transform, MiniMap, Export, Dnd } from '@antv/x6'
-import type { Cell, Edge as X6Edge, EdgeView } from '@antv/x6'
+import { Graph } from '@antv/x6/es/graph'
+import { MiniMap } from '@antv/x6/es/plugin/minimap'
+import type { Cell, Edge as X6Edge, EdgeView } from '@antv/x6/es'
+import type { Dnd } from '@antv/x6/es/plugin/dnd'
+import type { Transform } from '@antv/x6/es/plugin/transform'
 import { Minus, Plus, Scan, Map, Grid2X2, MousePointer2, Hand, Undo2, Redo2, Copy, ClipboardPaste, Trash2, ArrowUpToLine, ArrowDownToLine } from 'lucide-vue-next'
 import type { FlowchartDiagram, FlowNodeKind, FlowNode, FlowEdge } from '../../types/flowcharts'
-import { nodeToCell, edgeToCell, graphDiagram } from '../../utils/flowchartAdapter'
+import { nodeToCell, edgeToCell, graphDiagram } from '../../services/flowchartAdapterEs'
 import { makeNode, makeEdge, validateDiagram, downloadBlob, flowchartFingerprint } from '../../utils/flowcharts'
 import { classifyCanvasWheel, normalizeCanvasWheelDelta, runCanvasExportCycle, sanitizeFlowchartSvgMarkup } from '../../utils/flowchartEditor'
 import { readNativeFlowNodeKind, replaceFlowchartSelection } from '../../utils/flowchartEditorState'
@@ -55,7 +58,8 @@ interface ActiveEdgeDrag {
 }
 const edgeEditor = shallowRef<EdgeEditorState | null>(null)
 let graph: Graph | undefined, dnd: Dnd | undefined, transform: Transform | undefined, observer: ResizeObserver | undefined
-let disposed = false, applying = false, lastJson = '', frame = 0
+let exportPluginReady: Promise<void> | undefined
+let disposed = false, applying = false, lastJson = '', frame = 0, resizeFrame = 0
 let cancelPendingDrag: (() => void) | undefined
 let activeEdgeDrag: ActiveEdgeDrag | undefined
 let edgeDragListeners: { move: (event: PointerEvent) => void; up: (event: PointerEvent) => void; cancel: (event: PointerEvent) => void; keydown: (event: KeyboardEvent) => void } | undefined
@@ -437,8 +441,27 @@ function saveViewport() {
   if (!graph || !props.viewportKey) return
   try { localStorage.setItem(`devnest-flowchart-view:${props.viewportKey}`, JSON.stringify({ scale: graph.zoom(), ...graph.translate() })) } catch { /* Viewport persistence is optional. */ }
 }
+function scheduleObservedResize() {
+  if (resizeFrame) return
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0
+    if (!graph || !host.value) return
+    graph.resize(host.value.clientWidth, host.value.clientHeight)
+    editorViewport.width = host.value.clientWidth
+    editorViewport.height = host.value.clientHeight
+    keepSelectedInView()
+    syncEdgeEditor()
+    nextTick(() => syncContextToolbar())
+  })
+}
 async function exportImage(format: 'png' | 'svg', title: string) {
   if (!graph) return
+  const currentGraph = graph
+  exportPluginReady ??= import('../../services/flowchartExportPlugin').then(({ Export }) => {
+    if (graph === currentGraph) currentGraph.use(new Export())
+  })
+  await exportPluginReady
+  if (graph !== currentGraph) return
   const exportGraph = graph
   flush(); validateDiagram(graphDiagram(graph))
   return runCanvasExportCycle(hidden => { exportingOverlay.value = hidden }, async () => {
@@ -464,9 +487,11 @@ async function exportImage(format: 'png' | 'svg', title: string) {
     } finally { exportGraph.getCells().forEach(cell => exportGraph.findViewByCell(cell)?.showTools()) }
   })
 }
-onMounted(() => {
+onMounted(async () => {
   if (!host.value) return
   try {
+    const editorPlugins = props.readonly ? null : await import('../../services/flowchartEditorPlugins')
+    if (disposed || !host.value) return
     graph = new Graph({ container: host.value, autoResize: true, background: { color: '#f8fafc' }, grid: { visible: true, size: 16, type: 'dot', args: { color: '#cbd5e1' } },
       scaling: { min: 0.1, max: 3 }, panning: { enabled: props.readonly, eventTypes: ['leftMouseDown', 'rightMouseDown'] }, mousewheel: { enabled: true, modifiers: ['ctrl', 'meta'], zoomAtMousePosition: true, minScale: 0.1, maxScale: 3 }, interacting: !props.readonly,
       preventDefaultContextMenu: true,
@@ -475,8 +500,8 @@ onMounted(() => {
         createEdge: () => graph!.createEdge(edgeToCell(makeEdge('', ''))),
       },
     })
-    graph.use(new Export())
-    if (!props.readonly) {
+    if (editorPlugins) {
+      const { Clipboard, Dnd, History, Selection, Snapline, Transform } = editorPlugins
       graph.use(new History({ stackSize: 100, beforeAddCommand: (event: string) => !event.includes('tools') && !event.includes('ports') }))
       graph.use(new Selection({ enabled: true, multiple: true, rubberband: true, showNodeSelectionBox: true, showEdgeSelectionBox: false, modifiers: ['shift'] }))
       graph.use(new Snapline({ enabled: true })); graph.use(new Clipboard({ enabled: true, useLocalStorage: false }))
@@ -501,7 +526,7 @@ onMounted(() => {
     })
     graph.on('scale', ({ sx }) => { zoom.value = Math.round(sx * 100); saveViewport(); syncEdgeEditor(); nextTick(() => syncContextToolbar()) }); graph.on('translate', () => { saveViewport(); syncEdgeEditor(); nextTick(() => syncContextToolbar()) })
     host.value.addEventListener('wheel', handleWheel, { passive: false })
-    observer = new ResizeObserver(() => { graph?.resize(host.value!.clientWidth, host.value!.clientHeight); editorViewport.width = host.value?.clientWidth ?? 0; editorViewport.height = host.value?.clientHeight ?? 0; keepSelectedInView(); syncEdgeEditor(); nextTick(() => syncContextToolbar()) }); observer.observe(host.value)
+    observer = new ResizeObserver(scheduleObservedResize); observer.observe(host.value)
   } catch (error) { emit('error', `画布加载失败：${(error as Error).message}`) }
 })
 watch(() => props.diagram, value => { if (flowchartFingerprint(value) !== lastJson) replace(value) })
@@ -518,7 +543,7 @@ watch(() => props.panelCollapseState, () => {
     nextTick(() => syncContextToolbar())
   })
 }, { deep: true })
-onBeforeUnmount(() => { cancelEdgeDrag(); flush(); saveViewport(); disposed = true; cancelPendingDrag?.(); removeEdgeDragListeners(); cancelAnimationFrame(frame); observer?.disconnect(); host.value?.removeEventListener('wheel', handleWheel); dnd?.dispose(); graph?.dispose(); graph = undefined; edgeEditor.value = null })
+onBeforeUnmount(() => { cancelEdgeDrag(); flush(); saveViewport(); disposed = true; cancelPendingDrag?.(); removeEdgeDragListeners(); cancelAnimationFrame(frame); cancelAnimationFrame(resizeFrame); observer?.disconnect(); host.value?.removeEventListener('wheel', handleWheel); dnd?.dispose(); graph?.dispose(); graph = undefined; edgeEditor.value = null })
 function selectId(id: string | null) {
   if (!graph || props.readonly) return
   select(replaceFlowchartSelection(graph, id))

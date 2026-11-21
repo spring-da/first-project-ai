@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 public class TokenService {
@@ -27,6 +28,7 @@ public class TokenService {
         var expiresAt = now.plus(properties.security().accessTokenTtl());
         var claims = JwtClaimsSet.builder()
                 .issuer(properties.security().issuer())
+                .audience(List.of(properties.security().audience()))
                 .issuedAt(now)
                 .expiresAt(expiresAt)
                 .subject(user.getId())

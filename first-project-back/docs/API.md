@@ -2,12 +2,20 @@
 
 Base URL：`http://localhost:8080/api/v1`
 
+运行时 OpenAPI 契约默认关闭。仅在受控的开发或 CI 环境设置 `OPENAPI_ENABLED=true` 后，通过
+`GET /v3/api-docs` 获取 JSON 契约；生产环境不应公开该端点。契约构建测试会校验公开端点、
+Bearer 认证方案和 Web 客户端依赖的关键分享接口，防止前后端路径静默漂移。
+
 除注册、登录、昵称可用性检查和健康检查外，所有接口都需要：
 
 ```http
 Authorization: Bearer <accessToken>
 Content-Type: application/json
 ```
+
+JWT 同时校验 `iss`、`aud`、签名和有效期；`JWT_AUDIENCE` 默认是 `devnest-clients`。
+Web 客户端把令牌保存在 `sessionStorage`，关闭标签页后自动清除，并在首次读取时迁移旧版
+`localStorage` 会话。Android 端应继续使用系统安全凭据存储，不应把令牌写入普通偏好文件。
 
 ## 认证
 

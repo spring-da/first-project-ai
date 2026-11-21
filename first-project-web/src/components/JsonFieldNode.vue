@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronRight, Plus, Trash2 } from 'lucide-vue-next'
+import { ChevronRight, Maximize2, Plus, Trash2 } from 'lucide-vue-next'
 import type { JsonEdit, JsonNode, JsonType } from '../utils/jsonStructure'
 
 defineOptions({ name: 'JsonFieldNode' })
 const props = defineProps<{ node: JsonNode; path: number[]; label: string; siblings?: string[]; expansion: { open: boolean; revision: number } }>()
-const emit = defineEmits<{ edit: [path: number[], edit: JsonEdit] }>()
+const emit = defineEmits<{ edit: [path: number[], edit: JsonEdit]; preview: [label: string, value: string] }>()
 const open = ref(props.path.length === 0 ? true : props.expansion.open)
 const draft = ref('')
 const keyDraft = ref('')
@@ -15,6 +15,7 @@ const keyInput = ref<HTMLInputElement | null>(null)
 const visibleCount = ref(80)
 const childNames = computed(() => props.node.children.flatMap(item => item.key === undefined ? [] : [item.key]))
 const container = computed(() => props.node.type === 'object' || props.node.type === 'array')
+const canPreviewValue = computed(() => !container.value && (draft.value.length > 96 || /[\r\n]/.test(draft.value)))
 const defaults: Record<JsonType, string> = { object: '{}', array: '[]', string: '""', number: '0', boolean: 'false', null: 'null' }
 watch(() => props.expansion, (value) => { open.value = value.open })
 watch(() => props.node.children.length, () => { visibleCount.value = 80 })
@@ -62,13 +63,14 @@ function changeType(event: Event) {
       <textarea v-else-if="node.type === 'string'" ref="valueInput" v-model="draft" class="json-field__value" rows="1" :aria-label="`值 ${label}`" spellcheck="false" @input="editValue"></textarea>
       <input v-else ref="valueInput" v-model="draft" class="json-field__value" :aria-label="`值 ${label}`" spellcheck="false" @input="editValue" @keydown.enter.prevent />
       <div class="json-field__actions">
+        <button v-if="canPreviewValue" type="button" class="expand" :aria-label="`展开完整值 ${label}`" title="展开完整值" @click="emit('preview', label, draft)"><Maximize2 :size="13" /></button>
         <button v-if="container" type="button" :aria-label="`添加字段 ${label}`" title="添加字段" @click="open = true; emit('edit', path, { kind: 'add' })"><Plus :size="14" /></button>
         <button v-if="path.length" type="button" class="remove" :aria-label="`删除字段 ${label}`" title="删除字段（可撤销）" @click="emit('edit', path, { kind: 'remove' })"><Trash2 :size="13" /></button>
       </div>
     </div>
     <p v-if="error" class="json-field__error" role="status">{{ error }}</p>
     <div v-if="container && open" class="json-field__children">
-      <JsonFieldNode v-for="(child, index) in node.children.slice(0, visibleCount)" :key="index" :node="child" :path="[...path, index]" :label="node.type === 'array' ? `${label}[${index}]` : `${label}.${child.key}`" :siblings="childNames" :expansion="expansion" @edit="(target, edit) => emit('edit', target, edit)" />
+      <JsonFieldNode v-for="(child, index) in node.children.slice(0, visibleCount)" :key="index" :node="child" :path="[...path, index]" :label="node.type === 'array' ? `${label}[${index}]` : `${label}.${child.key}`" :siblings="childNames" :expansion="expansion" @edit="(target, edit) => emit('edit', target, edit)" @preview="(target, value) => emit('preview', target, value)" />
       <button v-if="node.children.length > visibleCount" class="json-field__empty" type="button" @click="visibleCount += 80">显示更多（剩余 {{ node.children.length - visibleCount }} 项）</button>
       <button v-if="!node.children.length" class="json-field__empty" type="button" @click="emit('edit', path, { kind: 'add' })"><Plus :size="13" />{{ node.type === 'object' ? '添加第一个字段' : '添加第一个数组项' }}</button>
     </div>

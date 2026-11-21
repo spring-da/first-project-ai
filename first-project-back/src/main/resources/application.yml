@@ -41,10 +41,32 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState,ping
+        readiness:
+          include: readinessState,db,diskSpace
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  prometheus:
+    metrics:
+      export:
+        enabled: ${PROMETHEUS_ENABLED:true}
+
+logging:
+  pattern:
+    level: "%5p [requestId:%X{requestId:-}]"
+
+springdoc:
+  api-docs:
+    enabled: ${OPENAPI_ENABLED:false}
 
 app:
   oss:
@@ -60,6 +82,7 @@ app:
     public-read: ${OSS_PUBLIC_READ:false}
   security:
     issuer: ${JWT_ISSUER:devnest-api}
+    audience: ${JWT_AUDIENCE:devnest-clients}
     access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:PT12H}
     # 仅供首次本地启动；部署前务必通过环境变量替换。
     jwt-secret-base64: ${JWT_SECRET_BASE64}

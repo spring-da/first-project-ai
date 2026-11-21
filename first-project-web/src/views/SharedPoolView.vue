@@ -11,7 +11,6 @@ import { useNotificationStore } from '../stores/notifications'
 import { useSharingStore } from '../stores/sharing'
 import { useSearchStore } from '../stores/search'
 import { useWorkspaceStore } from '../stores/workspace'
-import { getShareBundleToken } from '../utils/shareBundleLinks'
 import type { ShareBundleItem, ShareBundleSummary, ShareReference, ShareResourceType, SharedPoolEntry } from '../types/sharing'
 
 type Tab = 'all' | 'mine' | 'links'
@@ -59,7 +58,7 @@ const addSearch = ref('')
 const addSearchInput = ref<HTMLInputElement | null>(null)
 const addSelection = ref<string[]>([])
 const expandedAddDomains = ref(new Set<string>())
-const copiedLink = ref(false)
+const copiedLinkId = ref('')
 let copiedLinkTimer: ReturnType<typeof setTimeout> | undefined
 let titleSavedTimer: ReturnType<typeof setTimeout> | undefined
 let mounted = true
@@ -97,10 +96,6 @@ const addContentGroups = computed<ContentTreeGroup[]>(() => {
 })
 const addSelectionCount = computed(() => addSelection.value.length)
 const addableCount = computed(() => addableResources.value.length)
-const detailShareUrl = computed(() => {
-  const token = getShareBundleToken(auth.workspaceKey, sharing.detailLinkId)
-  return token ? `${window.location.origin}/share/bundle/${encodeURIComponent(token)}` : ''
-})
 const titleChanged = computed(() => detailTitle.value.trim() !== (sharing.bundleDetail?.link.title ?? ''))
 
 async function openTypeMenu(index = typeOptions.findIndex((option) => option.value === typeFilter.value)) {
@@ -253,38 +248,76 @@ async function saveAddedItems() {
 async function saveTitle() {
   const value = detailTitle.value.trim()
   if (!sharing.detailLinkId || !value || !titleChanged.value || busy.value) return
-  if (await sharing.updateTitle(sharing.detailLinkId, value)) {
+  if (await sharing.renameLink(sharing.detailLinkId, value)) {
     titleSaved.value = true
     if (titleSavedTimer !== undefined) clearTimeout(titleSavedTimer)
     titleSavedTimer = setTimeout(() => { titleSaved.value = false }, 2200)
   }
 }
 
-async function copyLink() {
-  if (!detailShareUrl.value || busy.value) return
+async function writeClipboardText(value: string) {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return
+  }
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const field = document.createElement('textarea')
+  field.value = value
+  field.setAttribute('readonly', '')
+  field.style.position = 'fixed'
+  field.style.opacity = '0'
+  document.body.appendChild(field)
   try {
-    if (window.isSecureContext && navigator.clipboard?.writeText) await navigator.clipboard.writeText(detailShareUrl.value)
-    else {
-      const field = document.createElement('textarea')
-      field.value = detailShareUrl.value
-      field.setAttribute('readonly', '')
-      field.style.position = 'fixed'
-      field.style.opacity = '0'
-      document.body.appendChild(field)
-      try {
-        field.select()
-        if (!document.execCommand('copy')) throw new Error('copy failed')
-      } finally {
-        field.remove()
-      }
-    }
-    copiedLink.value = true
-    if (copiedLinkTimer !== undefined) clearTimeout(copiedLinkTimer)
-    copiedLinkTimer = setTimeout(() => { copiedLink.value = false }, 2200)
-    notifications.notify('原链接已复制，未生成新的链接。', { type: 'success' })
+    field.focus()
+    field.select()
+    if (!document.execCommand('copy')) throw new Error('copy failed')
+  } finally {
+    field.remove()
+    previousFocus?.focus()
+  }
+}
+
+function showCopied(linkId: string) {
+  if (copiedLinkTimer !== undefined) clearTimeout(copiedLinkTimer)
+  copiedLinkId.value = linkId
+  copiedLinkTimer = setTimeout(() => { if (mounted) copiedLinkId.value = '' }, 2200)
+}
+
+async function retrieveAndCopyLink(link: ShareBundleSummary) {
+  const owner = auth.workspaceKey
+  const version = viewVersion
+  const result = await sharing.getLinkToken(link.id)
+  if (!result || !mounted || owner !== auth.workspaceKey || version !== viewVersion) return
+  try {
+    await writeClipboardText(`${window.location.origin}/share/bundle/${encodeURIComponent(result.token)}`)
+    if (!mounted || owner !== auth.workspaceKey || version !== viewVersion) return
+    showCopied(link.id)
+    notifications.notify(result.regenerated ? '新分享链接已生成并复制，原地址已失效。' : '分享链接已复制。', { type: 'success' })
   } catch {
-    copiedLink.value = false
-    notifications.notify('自动复制失败，请手动复制原链接。', { type: 'warning' })
+    if (mounted && owner === auth.workspaceKey && version === viewVersion) notifications.notify('自动复制失败，请重试。', { type: 'warning' })
+  }
+}
+
+async function copyLink(link: ShareBundleSummary) {
+  if (!link.active || busy.value) return
+  if (link.tokenAvailable) {
+    await retrieveAndCopyLink(link)
+    return
+  }
+  const owner = auth.workspaceKey
+  const version = viewVersion
+  confirming.value = true
+  try {
+    const accepted = await confirmation.ask({
+      title: '生成新的分享地址？',
+      message: '这条链接创建于“再次复制”功能上线前，原始地址无法从历史数据中恢复。',
+      detail: '继续后会生成并复制一个新地址，原地址立即失效；新地址以后可以随时在这里再次复制。',
+      confirmText: '生成并复制', cancelText: '暂不更换', tone: 'warning', icon: 'info',
+    })
+    if (!accepted || !mounted || owner !== auth.workspaceKey || version !== viewVersion) return
+    await retrieveAndCopyLink(link)
+  } finally {
+    if (mounted && version === viewVersion) confirming.value = false
   }
 }
 
@@ -354,7 +387,7 @@ watch([() => sharing.detailLinkId, () => sharing.bundleDetail?.link.title], ([id
   if (!id) {
     closeAddPicker()
     detailTitle.value = ''
-    copiedLink.value = false
+    copiedLinkId.value = ''
     return
   }
   if (typeof title === 'string' && (id !== previousId || !detailTitle.value)) detailTitle.value = title
@@ -365,6 +398,8 @@ watch(() => auth.workspaceKey, () => {
   viewVersion++
   if (confirming.value) confirmation.cancel()
   confirming.value = false
+  if (copiedLinkTimer !== undefined) clearTimeout(copiedLinkTimer)
+  copiedLinkId.value = ''
   selected.value = []
   clearFilters()
   load()
@@ -423,7 +458,7 @@ onBeforeUnmount(() => {
           <span class="total-count" aria-live="polite" aria-atomic="true">{{ request.loading ? '正在查找…' : `共 ${currentPage.total} ${isLinks ? '个链接' : '项内容'}` }}</span>
         </div>
         <div v-if="selected.length" class="selection-actions"><span aria-live="polite">已选 {{ selected.length }} 项</span><button class="button button-ghost" type="button" :disabled="busy" @click="selected = []">取消选择</button><button class="button subtle-danger" type="button" :disabled="busy || request.loading" @click="bulkAction"><Unlink :size="15" aria-hidden="true" />{{ isLinks ? '批量撤销' : '批量撤下' }}</button></div>
-        <p v-else class="scope-hint">{{ isLinks ? '完整链接仅在创建时显示一次' : tab === 'mine' ? '撤下仅影响广场，原文和外链保留' : '成员共享 · 按分享时间排序' }}</p>
+        <p v-else class="scope-hint">{{ isLinks ? '有效链接可随时在这里再次复制' : tab === 'mine' ? '撤下仅影响广场，原文和外链保留' : '成员共享 · 按分享时间排序' }}</p>
       </div>
 
       <div class="sharing-results" :aria-busy="request.loading">
@@ -443,7 +478,7 @@ onBeforeUnmount(() => {
           <li v-for="link in sharing.links.items" :key="link.id" class="sharing-row" :class="{ selected: selected.includes(link.id) }">
             <div class="row-leading"><label v-if="!link.revokedAt" class="row-checkbox"><input type="checkbox" :checked="selected.includes(link.id)" :disabled="busy" :aria-label="`选择链接 ${link.title}`" @change="toggle(link.id)" /></label><span v-else class="resource-icon"><Unlink :size="20" aria-hidden="true" /></span></div>
             <div class="row-copy"><div class="row-heading"><button class="resource-title" type="button" @click="sharing.openBundleDetail(link.id)">{{ link.title || '未命名合集' }}</button><span class="link-status" :class="{ available: link.active }"><Check v-if="link.active" :size="12" aria-hidden="true" />{{ linkStatus(link) }}</span><span class="type-label">{{ link.itemCount }} 项内容</span></div><div class="row-meta"><span>创建于 {{ date(link.createdAt) }}</span><span>到期 {{ date(link.expiresAt) }}</span><span v-if="link.revokedAt">撤销于 {{ date(link.revokedAt) }}</span></div></div>
-            <div class="row-actions"><button class="button button-ghost small" type="button" @click="sharing.openBundleDetail(link.id)">管理内容<ArrowRight :size="15" aria-hidden="true" /></button><button v-if="!link.revokedAt" class="button subtle-danger small" type="button" :disabled="busy" @click="revoke([link])">撤销链接</button></div>
+            <div class="row-actions"><button v-if="link.active" class="button button-ghost small" type="button" :disabled="busy" :aria-label="`${link.tokenAvailable ? '复制' : '生成并复制'}分享链接 ${link.title}`" @click="copyLink(link)"><Check v-if="copiedLinkId === link.id" :size="15" aria-hidden="true" /><Copy v-else :size="15" aria-hidden="true" />{{ copiedLinkId === link.id ? '已复制' : link.tokenAvailable ? '复制链接' : '生成并复制' }}</button><button class="button button-ghost small" type="button" @click="sharing.openBundleDetail(link.id)">管理内容<ArrowRight :size="15" aria-hidden="true" /></button><button v-if="!link.revokedAt" class="button subtle-danger small" type="button" :disabled="busy" @click="revoke([link])">撤销链接</button></div>
           </li>
         </ul>
       </div>
@@ -464,11 +499,11 @@ onBeforeUnmount(() => {
         <div class="bundle-summary">
           <div class="bundle-summary__copy"><span class="link-status" :class="{ available: sharing.bundleDetail.link.active }"><Check v-if="sharing.bundleDetail.link.active" :size="12" aria-hidden="true" />{{ linkStatus(sharing.bundleDetail.link) }}</span><p>{{ sharing.bundleDetail.link.itemCount }} 项可访问内容 · {{ date(sharing.bundleDetail.link.expiresAt) }} 到期</p></div>
           <div class="bundle-summary__actions">
-            <button class="button button-secondary" type="button" :disabled="busy || !detailShareUrl" :title="detailShareUrl ? '复制当前原链接，不会生成新链接' : '当前浏览器没有保存这条链接的 token'" @click="copyLink"><Check v-if="copiedLink" :size="16" aria-hidden="true" /><Copy v-else :size="16" aria-hidden="true" />{{ copiedLink ? '已复制原链接' : '复制原链接' }}</button>
+            <button v-if="sharing.bundleDetail.link.active" class="button button-secondary" type="button" :disabled="busy" @click="copyLink(sharing.bundleDetail.link)"><Check v-if="copiedLinkId === sharing.bundleDetail.link.id" :size="16" aria-hidden="true" /><Copy v-else :size="16" aria-hidden="true" />{{ copiedLinkId === sharing.bundleDetail.link.id ? '已复制' : sharing.bundleDetail.link.tokenAvailable ? '复制链接' : '生成并复制' }}</button>
             <button v-if="!sharing.bundleDetail.link.revokedAt" class="button danger" type="button" :disabled="busy" @click="revoke([sharing.bundleDetail.link])"><Unlink :size="16" aria-hidden="true" />撤销整个链接</button>
           </div>
         </div>
-        <p v-if="!detailShareUrl" class="bundle-token-note" role="status">这条链接是在当前版本之前创建的，浏览器没有保存原始 token，无法在管理页重新找回；请从创建分享时的窗口复制。重新生成会产生新链接，也不会自动替换原链接。</p>
+        <p v-if="!sharing.bundleDetail.link.tokenAvailable && sharing.bundleDetail.link.active" class="bundle-token-note" role="status">这是旧版本创建的链接。生成新地址前会再次确认，生成后原地址会立即失效。</p>
 
         <form class="bundle-title-editor" @submit.prevent="saveTitle">
           <div class="bundle-section-heading"><div><h3>分享标题</h3><p>公开分享页面会同步显示最新标题</p></div><span>{{ detailTitle.length }} / 200</span></div>

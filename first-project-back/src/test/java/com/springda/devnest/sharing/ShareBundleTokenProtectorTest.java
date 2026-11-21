@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,8 +23,10 @@ class ShareBundleTokenProtectorTest {
 
     @Test void rejectsTamperedCiphertext() {
         String protectedToken = protector.protect("b".repeat(43));
-        String tampered = protectedToken.substring(0, protectedToken.length() - 1)
-                + (protectedToken.endsWith("A") ? "B" : "A");
+        String[] parts = protectedToken.split("\\.", 3);
+        byte[] ciphertext = Base64.getUrlDecoder().decode(parts[2]);
+        ciphertext[0] ^= 1;
+        String tampered = parts[0] + "." + parts[1] + "." + Base64.getUrlEncoder().withoutPadding().encodeToString(ciphertext);
         assertThatThrownBy(() -> protector.reveal(tampered)).isInstanceOf(IllegalStateException.class);
     }
 }

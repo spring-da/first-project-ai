@@ -182,6 +182,18 @@ async function fixtureImageResponse(path: string) {
 }
 const json = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })
 const memberData = new Map<string, { tasks: typeof tasks; projects: typeof projects; documents: typeof documents; snippets: typeof snippets; flowcharts: typeof flowcharts; flowchartBodies: typeof flowchartBodies; domains: typeof domains; profile: { name: string; role: string; bio: string; avatarUrl: string | null; gender: null | 'MALE' | 'FEMALE' | 'OTHER' } }>()
+if (scenario.has('share-outline')) {
+  const note = documents[0]!
+  note.title = '采购协同 · 从需求到交付'
+  note.content = `# ${note.title}\n\n这是一篇合成测试文章，用于验证分享页面的标题导航与长文阅读。\n\n` + [
+    '## 一、建立共建清单', '### 清单准备', '### 注意事项',
+    '## 二、商品推送', '### 数据校验', '### 注意事项',
+    '## 三、需求与采购', '#### 异常处理',
+    '## 四、验收与结算', '## 五、常见问题',
+  ].map(heading => `${heading}\n\n${'确认信息完整后，按流程执行并记录处理结果，便于团队成员追踪每一步的进度。\n\n'.repeat(5)}`).join('') + '\n```md\n## 代码中的标题不进入目录\n```\n'
+  documents.push({ ...note, id: 'fixture-plain-note', title: '没有标题的简短备忘', content: '这是一篇没有章节标题的合成文章。', fileName: 'plain.md' })
+  documents.push({ ...note, id: 'fixture-empty-note', title: '空白文章', content: '', fileName: 'empty.md' })
+}
 for (const account of adminAccounts.filter((item) => item.userId)) {
   memberData.set(account.userId!, {
     tasks: structuredClone(tasks), projects: structuredClone(projects), documents: structuredClone(documents),

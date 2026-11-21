@@ -69,9 +69,11 @@ test('canvas SVG export downloads sanitized X6 output rather than editor chrome'
   const adapter = { nodeToCell: (node: unknown) => node, edgeToCell: (edge: unknown) => edge, graphDiagram: () => emptyDiagram() }
   const component = compileCanvas(id => {
     if (id === 'vue') return vue
-    if (id === '@antv/x6') return x6
+    if (id === '@antv/x6/es/graph') return { Graph: x6.Graph }
+    if (id === '@antv/x6/es/plugin/minimap') return { MiniMap: x6.MiniMap }
+    if (id.endsWith('flowchartExportPlugin')) return { Export: x6.Export }
     if (id === 'lucide-vue-next') return new Proxy({}, { get: () => icon })
-    if (id.endsWith('flowchartAdapter')) return adapter
+    if (id.includes('flowchartAdapter')) return adapter
     if (id.endsWith('utils/flowcharts')) return { ...flows, downloadBlob: (blob: Blob, filename: string) => downloads.push({ blob, filename }) }
     if (id.endsWith('flowchartEditor')) return editor
     if (id.endsWith('flowchartEditorState')) return { readNativeFlowNodeKind: () => null, replaceFlowchartSelection: () => null }

@@ -1,0 +1,6 @@
+export { Clipboard } from '@antv/x6/es/plugin/clipboard'
+export { Dnd } from '@antv/x6/es/plugin/dnd'
+export { History } from '@antv/x6/es/plugin/history'
+export { Selection } from '@antv/x6/es/plugin/selection'
+export { Snapline } from '@antv/x6/es/plugin/snapline'
+export { Transform } from '@antv/x6/es/plugin/transform'

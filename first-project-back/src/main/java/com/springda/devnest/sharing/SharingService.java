@@ -22,10 +22,12 @@ public class SharingService {
     private final SharingQueries queries;
     private final UserRepository users;
     private final MarkdownShareTokenService tokens;
+    private final ShareBundleTokenProtector tokenProtector;
     public SharingService(PoolEntryRepository pool, ShareBundleRepository bundles, ShareBundleItemRepository items,
-                          SharingResources resources, SharingQueries queries, UserRepository users, MarkdownShareTokenService tokens) {
+                          SharingResources resources, SharingQueries queries, UserRepository users, MarkdownShareTokenService tokens,
+                          ShareBundleTokenProtector tokenProtector) {
         this.pool = pool; this.bundles = bundles; this.items = items; this.resources = resources;
-        this.queries = queries; this.users = users; this.tokens = tokens;
+        this.queries = queries; this.users = users; this.tokens = tokens; this.tokenProtector = tokenProtector;
     }
 
     @Transactional
@@ -73,7 +75,8 @@ public class SharingService {
             throw new BadRequestException("分享有效期必须晚于当前时间且不超过 365 天");
         if (request.title() == null || request.title().isBlank() || request.title().trim().length() > 200) throw new BadRequestException("请输入 1–200 字的分享标题");
         var saved = validate(owner, request.items()); var token = tokens.createToken();
-        var bundle = bundles.saveAndFlush(new ShareBundleEntity(owner, request.title().trim(), tokens.digest(token), request.expiresAt()));
+        var bundle = bundles.saveAndFlush(new ShareBundleEntity(owner, request.title().trim(), tokens.digest(token),
+                tokenProtector.protect(token), request.expiresAt()));
         int order = 0;
         for (var entry : saved.entrySet()) {
             var ref = entry.getKey(); var resource = entry.getValue();
@@ -92,34 +95,54 @@ public class SharingService {
         return new SharingDtos.LinkDetail(queries.link(owner, id), queries.items(owner, id, enabled));
     }
     @Transactional
-    public void updateTitle(String owner, String id, SharingDtos.UpdateLinkRequest request) {
-        lockOwner(owner);
-        var bundle = ownedBundle(owner, id);
-        if (!bundle.isActive(Instant.now())) throw new ConflictException("已撤销或过期的链接不能修改");
+    public SharingDtos.LinkToken linkToken(String owner, String id) {
+        lockEnabledOwner(owner);
+        var bundle = modifiableBundle(owner, id);
+        String protectedToken = bundle.getTokenCiphertext();
+        if (protectedToken == null || protectedToken.isBlank()) {
+            String replacement = tokens.createToken();
+            bundle.replaceToken(tokens.digest(replacement), tokenProtector.protect(replacement));
+            bundles.flush();
+            return new SharingDtos.LinkToken(replacement, true);
+        }
+        try {
+            String token = tokenProtector.reveal(protectedToken);
+            if (!tokens.digest(token).equals(bundle.getTokenDigest())) throw new IllegalStateException("share token digest mismatch");
+            return new SharingDtos.LinkToken(token, false);
+        } catch (RuntimeException exception) {
+            throw new ConflictException("当前链接凭据无法恢复，请撤销后重新创建");
+        }
+    }
+    @Transactional
+    public SharingDtos.LinkSummary renameLink(String owner, String id, SharingDtos.RenameLinkRequest request) {
+        lockEnabledOwner(owner);
+        var bundle = modifiableBundle(owner, id);
         if (request.title() == null || request.title().isBlank() || request.title().trim().length() > 200)
             throw new BadRequestException("请输入 1–200 字的分享标题");
         bundle.rename(request.title().trim());
         bundles.flush();
+        return queries.link(owner, id);
     }
     @Transactional
-    public void addItems(String owner, String id, SharingDtos.AddLinkItemsRequest request) {
+    public SharingDtos.LinkDetail addItems(String owner, String id, SharingDtos.AddItemsRequest request) {
         lockEnabledOwner(owner);
-        var bundle = ownedBundle(owner, id);
-        if (!bundle.isActive(Instant.now())) throw new BadRequestException("已撤销或过期的链接不能添加内容");
-        var saved = validate(owner, request.items());
-        var existing = items.findAllByBundleId(bundle.getId());
-        if (existing.size() + saved.size() > 100) throw new BadRequestException("每个分享链接最多包含 100 项内容");
+        var bundle = modifiableBundle(owner, id);
+        var additions = validate(owner, request.items());
+        var existing = items.findAllByBundleId(id);
         var existingReferences = existing.stream()
                 .map(item -> new SharingDtos.Reference(item.getResourceType(), item.getResourceId()))
                 .collect(java.util.stream.Collectors.toSet());
-        if (saved.keySet().stream().anyMatch(existingReferences::contains))
-            throw new ConflictException("所选内容已经在此分享链接中，移除过的内容也不能重新添加");
+        if (additions.keySet().stream().anyMatch(existingReferences::contains))
+            throw new BadRequestException("所选内容已在此链接中或曾被移除，不能重复添加");
+        long currentCount = existing.stream().filter(item -> item.getRemovedAt() == null).count();
+        if (currentCount + additions.size() > 100) throw new BadRequestException("每个外部链接最多包含 100 项内容");
         int order = existing.stream().mapToInt(ShareBundleItemEntity::getSortOrder).max().orElse(-1) + 1;
-        for (var entry : saved.entrySet()) {
+        for (var entry : additions.entrySet()) {
             var ref = entry.getKey(); var resource = entry.getValue();
             items.save(new ShareBundleItemEntity(bundle.getId(), ref.type(), ref.id(), resource.generation(), resource.content().title(), order++));
         }
         items.flush();
+        return new SharingDtos.LinkDetail(queries.link(owner, id), queries.items(owner, id, true));
     }
     @Transactional
     public void revokeLinks(String owner, SharingDtos.RevokeRequest request) {
@@ -157,6 +180,11 @@ public class SharingService {
         if (token == null || !TOKEN.matcher(token).matches()) throw SharingResources.unavailable();
         var bundle = bundles.findByTokenDigest(tokens.digest(token)).filter(b -> b.isActive(Instant.now())).orElseThrow(SharingResources::unavailable);
         resources.requireEnabled(bundle.getOwnerId()); return bundle;
+    }
+    private ShareBundleEntity modifiableBundle(String owner, String id) {
+        var bundle = ownedBundle(owner, id);
+        if (!bundle.isActive(Instant.now())) throw new ConflictException("已撤销或已过期的外部链接不能修改");
+        return bundle;
     }
     private ShareBundleEntity ownedBundle(String owner, String id) { return bundles.findByIdAndOwnerId(id, owner).orElseThrow(SharingResources::unavailable); }
     private PoolEntryEntity poolEntry(String id) { return pool.findById(id).filter(p -> p.getRevokedAt() == null).orElseThrow(SharingResources::unavailable); }

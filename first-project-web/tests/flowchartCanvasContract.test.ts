@@ -4,6 +4,17 @@ import test from 'node:test'
 
 const canvasSource = readFileSync(new URL('../src/components/flowcharts/FlowchartCanvas.vue', import.meta.url), 'utf8')
 const adapterSource = readFileSync(new URL('../src/utils/flowchartAdapter.ts', import.meta.url), 'utf8')
+const editorPluginsSource = readFileSync(new URL('../src/services/flowchartEditorPlugins.ts', import.meta.url), 'utf8')
+const exportPluginSource = readFileSync(new URL('../src/services/flowchartExportPlugin.ts', import.meta.url), 'utf8')
+
+test('heavy flowchart capabilities stay out of the read-only canvas chunk', () => {
+  assert.match(canvasSource, /from ['"]@antv\/x6\/es\/graph['"]/)
+  assert.match(canvasSource, /import\(['"]\.\.\/\.\.\/services\/flowchartEditorPlugins['"]\)/)
+  assert.match(canvasSource, /import\(['"]\.\.\/\.\.\/services\/flowchartExportPlugin['"]\)/)
+  assert.doesNotMatch(canvasSource, /import\s*\{[^}]*History[^}]*\}\s*from\s*['"]@antv\/x6['"]/s)
+  assert.match(editorPluginsSource, /@antv\/x6\/es\/plugin\/history/)
+  assert.match(exportPluginSource, /@antv\/x6\/es\/plugin\/export/)
+})
 
 test('canvas installs the custom edge editor layer instead of native segment blocks', () => {
   assert.match(canvasSource, /flow-canvas__edge-editor/)
@@ -74,4 +85,11 @@ test('the minimap stays mounted while export temporarily hides it', () => {
 test('panel collapse state schedules a selected-cell viewport recompute', () => {
   assert.match(canvasSource, /panelCollapseState\?:/)
   assert.match(canvasSource, /watch\(\(\) => props\.panelCollapseState,[\s\S]*nextTick\([\s\S]*keepSelectedInView/)
+})
+
+test('resize observations are coalesced to one canvas layout per frame', () => {
+  assert.match(canvasSource, /function scheduleObservedResize\(\)/)
+  assert.match(canvasSource, /resizeFrame = requestAnimationFrame/)
+  assert.match(canvasSource, /new ResizeObserver\(scheduleObservedResize\)/)
+  assert.match(canvasSource, /cancelAnimationFrame\(resizeFrame\)/)
 })

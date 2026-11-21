@@ -100,6 +100,8 @@ DB_URL=jdbc:postgresql://127.0.0.1:5432/devnest
 DB_USERNAME=devnest
 DB_PASSWORD=你的数据库密码
 JWT_SECRET_BASE64=你的Base64密钥
+JWT_ISSUER=devnest-api
+JWT_AUDIENCE=devnest-clients
 ```
 
 默认 `BOOTSTRAP_ADMIN_REQUIRED=false`，允许空库启动后手动导入已有账号，此时初始管理员邮箱和密码保持为空。如果完全从零使用、不导入数据，可临时配置初始管理员：
@@ -160,6 +162,16 @@ http://localhost:8080/actuator/health
 {"status":"UP"}
 ```
 
+生产探针和监控端点：
+
+```text
+GET /actuator/health/liveness
+GET /actuator/health/readiness
+GET /actuator/prometheus        # 需要管理员 JWT
+```
+
+每个响应都带有 `X-Request-ID`；5xx 的 Web 提示会展示同一请求编号，便于关联服务端日志。Prometheus、告警建议和故障处理流程见 [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)。
+
 ## Maven 命令
 
 ```powershell
@@ -202,13 +214,14 @@ Flutter Web 本地开发地址需要加入 `CORS_ALLOWED_ORIGINS`。
 - 将 CORS 来源限制为真实网站域名。
 - 使用普通 PostgreSQL 应用账号，不要使用 `postgres` 超级用户。
 - 为数据库配置备份、监控和恢复演练。
+- 确认 readiness 探针、Prometheus 抓取和 5xx/延迟告警正常。
 
 ## 下一阶段
 
 - Flutter `RemoteAppRepository` 对接 REST API
 - Refresh Token
 - 分页、搜索和增量同步接口
-- OpenAPI/Swagger 文档
+- 根据 OpenAPI 契约进一步生成 Web/Android 类型安全客户端
 
 流程图 API 与可移植模型见 [docs/FLOWCHART_API.md](docs/FLOWCHART_API.md)。V19 升级前须完成可恢复备份，旧开发日志及其分享项将被清除。
 

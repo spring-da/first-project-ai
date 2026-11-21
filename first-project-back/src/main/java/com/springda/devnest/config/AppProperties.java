@@ -8,7 +8,7 @@ import java.util.List;
 @ConfigurationProperties(prefix = "app")
 public record AppProperties(Security security, Cors cors, AccountSecurity accountSecurity) {
 
-    public record Security(String issuer, Duration accessTokenTtl, String jwtSecretBase64) {
+    public record Security(String issuer, String audience, Duration accessTokenTtl, String jwtSecretBase64) {
     }
 
     public record Cors(List<String> allowedOrigins) {

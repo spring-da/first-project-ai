@@ -15,7 +15,12 @@ beforeEach(() => {
     setItem: () => {}, removeItem: () => {},
   } })
 })
-afterEach(() => { resetWorkspaceRequests(); Reflect.deleteProperty(globalThis, 'window'); Reflect.deleteProperty(globalThis, 'localStorage') })
+afterEach(() => {
+  resetWorkspaceRequests()
+  Reflect.deleteProperty(globalThis, 'window')
+  Reflect.deleteProperty(globalThis, 'localStorage')
+  Reflect.deleteProperty(globalThis, 'sessionStorage')
+})
 
 test('member context applies only to workspace data; authentication and system communication keep the real identity', async (context) => {
   setRequestWorkspace('member')
@@ -108,10 +113,48 @@ test('session persistence failures return a useful error instead of a browser ex
   }), { code: 'SESSION_STORAGE_UNAVAILABLE' })
 })
 
+test('browser sessions use sessionStorage and migrate a valid legacy localStorage token', () => {
+  const legacy = new Map<string, string>()
+  const transient = new Map<string, string>()
+  const storage = (values: Map<string, string>) => ({
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value) },
+    removeItem: (key: string) => { values.delete(key) },
+  })
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage(legacy) })
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: storage(transient) })
+  const session = {
+    accessToken: 'legacy-token', tokenType: 'Bearer' as const, expiresInSeconds: 60, expiresAt: Date.now() + 60_000,
+    user: { id: 'user', email: 'user@example.com', displayName: 'User', role: 'USER' as const, mustChangePassword: false },
+  }
+  legacy.set('devnest_web_session_v1', JSON.stringify(session))
+
+  assert.equal(readStoredSession()?.accessToken, 'legacy-token')
+  assert.equal(legacy.has('devnest_web_session_v1'), false)
+  assert.equal(JSON.parse(transient.get('devnest_web_session_v1') ?? '{}').accessToken, 'legacy-token')
+
+  writeStoredSession({ ...session, accessToken: 'new-token' })
+  assert.equal(JSON.parse(transient.get('devnest_web_session_v1') ?? '{}').accessToken, 'new-token')
+  assert.equal(legacy.has('devnest_web_session_v1'), false)
+})
+
 test('malformed JSON keeps the HTTP failure status instead of reporting a network outage', async (context) => {
   context.mock.method(globalThis, 'fetch', async () => new Response('{', {
     status: 502,
     headers: { 'Content-Type': 'application/problem+json' },
   }))
   await assert.rejects(apiRequest('/tasks'), { status: 502, message: '请求失败（502）' })
+})
+
+test('server failures retain the request reference for support diagnostics', async (context) => {
+  context.mock.method(globalThis, 'fetch', async () => Response.json({
+    detail: '服务器暂时无法处理请求，请稍后重试。',
+    requestId: 'support-incident-42',
+  }, { status: 500, headers: { 'X-Request-ID': 'support-incident-42' } }))
+
+  await assert.rejects(apiRequest('/tasks'), {
+    status: 500,
+    requestId: 'support-incident-42',
+    message: '服务器暂时无法处理请求，请稍后重试。（请求编号：support-incident-42）',
+  })
 })

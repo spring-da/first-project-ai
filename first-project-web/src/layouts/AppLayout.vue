@@ -35,6 +35,7 @@ import { useSearchStore } from '../stores/search'
 import { useCommunicationStore } from '../stores/communication'
 import { useNotificationStore } from '../stores/notifications'
 import { matchesDocumentSearch, matchesSearch } from '../utils/search'
+import { resolveNavigationTransition, type NavigationTransition } from '../utils/navigationMotion'
 
 const router = useRouter()
 const route = useRoute()
@@ -47,10 +48,17 @@ const { query, scope } = storeToRefs(search)
 const searchInput = ref<HTMLInputElement | null>(null)
 const searchBox = ref<HTMLElement | null>(null)
 const workspaceMain = ref<HTMLElement | null>(null)
+const mainNavigation = ref<HTMLElement | null>(null)
 const globalSearchOpen = ref(false)
 const activeResult = ref(-1)
 const acknowledgingAnnouncement = ref(false)
+const navIndicatorY = ref('0px')
+const navIndicatorHeight = ref('0px')
+const navIndicatorReady = ref(false)
+const pageTransitionName = ref<NavigationTransition>('page-crossfade')
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'devnest.sidebar-collapsed'
+let navIndicatorFrame = 0
+let navResizeObserver: ResizeObserver | null = null
 
 function readSidebarCollapsed() {
   try {
@@ -230,6 +238,34 @@ function toggleSidebar() {
   }
 }
 
+function updateNavIndicator() {
+  const activeItem = mainNavigation.value?.querySelector<HTMLElement>('.nav-item.router-link-exact-active')
+  if (!activeItem) {
+    navIndicatorReady.value = false
+    return
+  }
+  navIndicatorY.value = `${activeItem.offsetTop}px`
+  navIndicatorHeight.value = `${activeItem.offsetHeight}px`
+  navIndicatorReady.value = true
+}
+
+function queueNavIndicatorUpdate() {
+  cancelAnimationFrame(navIndicatorFrame)
+  navIndicatorFrame = requestAnimationFrame(updateNavIndicator)
+}
+
+watch(() => route.path, (path, previousPath) => {
+  pageTransitionName.value = resolveNavigationTransition(
+    navItems.value.map((item) => item.to),
+    path,
+    previousPath,
+  )
+  void nextTick(queueNavIndicatorUpdate)
+}, { immediate: true, flush: 'post' })
+watch([isSidebarCollapsed, () => navItems.value.length], () => {
+  void nextTick(queueNavIndicatorUpdate)
+}, { flush: 'post' })
+
 watch(() => route.name, (name, previousName) => {
   if (route.name !== 'knowledge') editorFocused.value = false
   search.reset(hasPageSearch.value ? 'page' : 'global')
@@ -247,15 +283,22 @@ onMounted(() => {
   })
   window.addEventListener('keydown', onShortcut)
   window.addEventListener('pointerdown', onPointerDown)
+  if ('ResizeObserver' in window && mainNavigation.value) {
+    navResizeObserver = new ResizeObserver(queueNavIndicatorUpdate)
+    navResizeObserver.observe(mainNavigation.value)
+  }
+  queueNavIndicatorUpdate()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onShortcut)
   window.removeEventListener('pointerdown', onPointerDown)
+  navResizeObserver?.disconnect()
+  cancelAnimationFrame(navIndicatorFrame)
 })
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'editor-focused': editorFocused, 'tools-focused': toolsFocused }">
+  <div class="app-shell" :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'editor-focused': editorFocused, 'tools-focused': toolsFocused, 'knowledge-focused': isKnowledgeRoute && !editorFocused }">
     <aside class="sidebar">
       <RouterLink class="brand-link" :to="workspaceLink('/')" aria-label="返回 DevNest 工作台" title="DevNest"><AppLogo /></RouterLink>
       <button
@@ -272,8 +315,15 @@ onBeforeUnmount(() => {
           <PanelLeftClose v-else key="close" :size="16" />
         </Transition>
       </button>
-      <nav id="main-navigation" class="main-nav" aria-label="主导航" :style="{ '--nav-count': navItems.length }">
+      <nav
+        id="main-navigation"
+        ref="mainNavigation"
+        class="main-nav"
+        aria-label="主导航"
+        :style="{ '--nav-count': navItems.length, '--nav-indicator-y': navIndicatorY, '--nav-indicator-height': navIndicatorHeight }"
+      >
         <span class="nav-caption">工作空间</span>
+        <span class="nav-active-indicator" :class="{ ready: navIndicatorReady }" aria-hidden="true"></span>
         <RouterLink
           v-for="item in navItems"
           :key="item.to"
@@ -311,7 +361,12 @@ onBeforeUnmount(() => {
       </div>
       <Transition name="topbar">
       <header v-if="!editorFocused" class="topbar">
-        <div class="workspace-breadcrumb"><span>个人空间</span><ChevronRight :size="13" aria-hidden="true" /><strong>{{ currentNav.label }}</strong></div>
+        <Transition name="breadcrumb" mode="out-in">
+          <div :key="currentNav.to" class="workspace-breadcrumb">
+            <span class="workspace-breadcrumb__icon"><component :is="currentNav.icon" :size="15" aria-hidden="true" /></span>
+            <span>个人空间</span><ChevronRight :size="13" aria-hidden="true" /><strong>{{ currentNav.label }}</strong>
+          </div>
+        </Transition>
         <div ref="searchBox" class="global-search" :class="{ 'global-search--scoped': hasPageSearch }" @focusout="onSearchFocusOut">
           <Search :size="18" aria-hidden="true" />
           <SearchScopeSelect v-if="hasPageSearch" v-model="scope" @change="openGlobalSearch" @open-change="(open) => { if (open) globalSearchOpen = false }" />
@@ -341,14 +396,16 @@ onBeforeUnmount(() => {
       </header>
       </Transition>
 
-      <RouterView v-slot="{ Component, route }">
-        <Transition name="page" mode="out-in" appear>
-          <KeepAlive v-if="route.meta.keepAlive" :max="8">
-            <component :is="Component" :key="route.name" @editing-change="setEditorFocused" />
-          </KeepAlive>
-          <component :is="Component" v-else :key="route.fullPath" />
-        </Transition>
-      </RouterView>
+      <div class="route-stage">
+        <RouterView v-slot="{ Component, route }">
+          <Transition :name="pageTransitionName" appear>
+            <KeepAlive v-if="route.meta.keepAlive" :max="8">
+              <component :is="Component" :key="route.name" @editing-change="setEditorFocused" />
+            </KeepAlive>
+            <component :is="Component" v-else :key="route.fullPath" />
+          </Transition>
+        </RouterView>
+      </div>
     </main>
 
     <AppModal
@@ -394,11 +451,17 @@ onBeforeUnmount(() => {
 .announcement-modal-actions small { color: var(--muted); font-size: var(--font-2xs); }
 @media (max-width: 600px) { .member-access-banner { flex-wrap: wrap; padding: 9px 12px; } .member-access-banner > span { flex-basis: calc(100% - 30px); } .member-access-banner > a { margin-left: auto; min-height: 32px; } }
 
-.brand-link { padding: 0 8px; }
+.brand-link { padding: 0 8px; border-radius: 12px; }
+.brand-link :deep(.app-logo__mark) { transition: transform var(--motion-slow) var(--ease-emphasized), box-shadow var(--motion-base) ease; }
+.brand-link:hover :deep(.app-logo__mark) { transform: translateY(-2px) rotate(-3deg); box-shadow: 0 10px 24px color-mix(in srgb, var(--brand) 28%, transparent); }
 .workspace-breadcrumb { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: var(--font-xs); white-space: nowrap; }
 .workspace-breadcrumb strong { color: var(--subtle); font-weight: 500; }
-.global-search { position: relative; width: min(540px, 52vw); min-width: 0; display: flex; align-items: center; gap: 10px; margin-left: auto; padding: 0 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); transition: border-color .18s, box-shadow .18s; }
-.global-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--panel); }
+.workspace-breadcrumb__icon { width: 30px; height: 30px; display: grid; flex: 0 0 30px; place-items: center; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 9px; background: var(--accent-bg); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 15%, transparent); }
+.breadcrumb-enter-active, .breadcrumb-leave-active { transition: opacity var(--motion-fast) ease, transform var(--motion-base) var(--ease-emphasized); }
+.breadcrumb-enter-from { opacity: 0; transform: translateX(8px); }
+.breadcrumb-leave-to { opacity: 0; transform: translateX(-5px); }
+.global-search { position: relative; width: min(540px, 52vw); min-width: 0; display: flex; align-items: center; gap: 10px; margin-left: auto; padding: 0 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 11px; background: var(--surface-raised); box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 3%, transparent); transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-base), box-shadow var(--motion-base), transform var(--motion-base) var(--ease-standard); }
+.global-search:focus-within { color: var(--accent); border-color: var(--accent-border); box-shadow: 0 0 0 3px var(--accent-soft), 0 10px 28px color-mix(in srgb, var(--accent) 9%, transparent); background: var(--panel); transform: translateY(-1px); }
 .global-search > svg { flex-shrink: 0; }
 .global-search input { min-width: 0; width: 100%; height: 40px; padding: 0; color: var(--text); border: 0; outline: 0; background: transparent; font-size: var(--font-xs); }
 .global-search input::-webkit-search-cancel-button { appearance: none; }

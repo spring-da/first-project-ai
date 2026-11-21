@@ -1,5 +1,6 @@
 package com.springda.devnest.auth;
 
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -26,12 +27,14 @@ public class AuthController {
     }
 
     @PostMapping("/register")
+    @SecurityRequirements
     ResponseEntity<AuthDtos.AuthResponse> register(@Valid @RequestBody AuthDtos.RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(authService.register(request));
     }
 
     @PostMapping("/login")
+    @SecurityRequirements
     ResponseEntity<AuthDtos.AuthResponse> login(
             @Valid @RequestBody AuthDtos.LoginRequest request,
             HttpServletRequest httpRequest
@@ -41,6 +44,7 @@ public class AuthController {
     }
 
     @GetMapping("/display-name-availability")
+    @SecurityRequirements
     ResponseEntity<AuthDtos.DisplayNameAvailability> displayNameAvailability(
             @RequestParam String displayName
     ) {

@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent } from 'vue'
 import { Workflow, Code2, FileText } from 'lucide-vue-next'
 import MarkdownContent from './MarkdownContent.vue'
+import MarkdownReadingLayout from './MarkdownReadingLayout.vue'
 import type { SharedContent } from '../types/sharing'
 import { highlightCode } from '../utils/codeHighlight'
 
@@ -10,7 +11,8 @@ const props = withDefaults(defineProps<{
   resource: SharedContent
   imageBasePath: string
   authenticatedImages?: boolean
-}>(), { authenticatedImages: true })
+  showOutline?: boolean
+}>(), { authenticatedImages: true, showOutline: false })
 
 const typeLabels = { MARKDOWN: 'Markdown 文章', SNIPPET: '代码片段', FLOWCHART: '流程图' }
 const highlightedCode = computed(() => props.resource.resourceType === 'SNIPPET'
@@ -35,6 +37,7 @@ const updatedAt = computed(() => {
 </script>
 
 <template>
+  <MarkdownReadingLayout :source="markdownSource" :enabled="showOutline && resource.resourceType === 'MARKDOWN'">
   <article class="shared-content-reader">
     <header class="shared-content-reader__header">
       <p class="shared-content-reader__kind">
@@ -69,6 +72,7 @@ const updatedAt = computed(() => {
     <pre v-else-if="resource.resourceType === 'SNIPPET'" class="shared-content-reader__code" tabindex="0" role="region" aria-label="代码内容，可横向滚动"><code v-html="highlightedCode"></code></pre>
 
   </article>
+  </MarkdownReadingLayout>
 </template>
 
 <style scoped>

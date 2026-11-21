@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { AlertCircle, ArrowRight, BookOpen, Check, Clock3, Code2, FileText, FolderOpen, Link2, LoaderCircle, Moon, RefreshCw, Search, Sun, X } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { AlertCircle, ArrowRight, BookOpen, Check, ChevronDown, Clock3, Code2, FileText, FolderOpen, Link2, LoaderCircle, Moon, RefreshCw, Search, Sun, X } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import AppLogo from '../components/AppLogo.vue'
 import EmptyState from '../components/EmptyState.vue'
@@ -17,6 +17,8 @@ const resource = ref<SharedContent | null>(null)
 const selectedId = ref<string | null>(null)
 const search = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
+const readerRoot = ref<HTMLElement | null>(null)
+const directoryExpanded = ref(true)
 const loading = ref(false)
 const pageError = ref('')
 const unavailable = ref(false)
@@ -180,10 +182,20 @@ function clearSearch() {
   searchInput.value?.focus()
 }
 
+async function selectItem(id: string) {
+  directoryExpanded.value = false
+  const pending = loadBundle(id)
+  await nextTick()
+  readerRoot.value?.focus({ preventScroll: true })
+  readerRoot.value?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+  await pending
+}
+
 watch(token, () => {
   clearExpiryTimer()
   bundle.value = null
   search.value = ''
+  directoryExpanded.value = true
   void loadBundle()
 }, { immediate: true })
 
@@ -237,18 +249,22 @@ onBeforeUnmount(() => {
 
         <div class="bundle-layout">
           <aside class="bundle-directory" aria-labelledby="bundle-directory-title">
-            <div class="bundle-directory-heading"><h2 id="bundle-directory-title">内容目录</h2><span>{{ bundle.items.length }} 项</span></div>
+            <div class="bundle-directory-heading"><h2 id="bundle-directory-title"><FolderOpen :size="17" aria-hidden="true" />分享文档</h2><span>{{ bundle.items.length }} 项</span></div>
+            <button class="bundle-directory-toggle" type="button" :aria-expanded="directoryExpanded" aria-controls="bundle-directory-body" @click="directoryExpanded = !directoryExpanded">
+              <FolderOpen :size="17" aria-hidden="true" /><span>{{ selectedId ? '切换分享文档' : '浏览分享文档' }}</span><small>{{ bundle.items.length }} 项</small><ChevronDown :size="16" :class="{ expanded: directoryExpanded }" aria-hidden="true" />
+            </button>
+            <div id="bundle-directory-body" class="bundle-directory-body" :class="{ 'is-expanded': directoryExpanded }">
             <label for="bundle-search" class="bundle-search-label">搜索目录标题</label>
             <div class="bundle-search">
               <Search :size="16" aria-hidden="true" />
               <input id="bundle-search" ref="searchInput" v-model="search" type="search" placeholder="输入标题关键词" autocomplete="off" />
               <button v-if="search" type="button" aria-label="清空目录搜索" @click="clearSearch"><X :size="15" aria-hidden="true" /></button>
             </div>
-            <p class="bundle-search-result" role="status">{{ search.trim() ? `找到 ${filteredItems.length} 项内容` : '选择一项内容开始阅读' }}</p>
+            <p class="bundle-search-result" role="status">{{ search.trim() ? `找到 ${filteredItems.length} 项内容` : selectedId ? '正在阅读的文档已高亮' : '选择一项内容开始阅读' }}</p>
             <nav v-if="filteredItems.length" aria-label="分享内容目录">
               <ul class="bundle-items">
                 <li v-for="item in filteredItems" :key="item.id">
-                  <button type="button" class="bundle-item" :class="{ selected: selectedId === item.id }" :aria-pressed="selectedId === item.id" aria-controls="shared-content" @click="loadBundle(item.id)">
+                  <button type="button" class="bundle-item" :class="{ selected: selectedId === item.id }" :aria-pressed="selectedId === item.id" aria-controls="shared-content" @click="selectItem(item.id)">
                     <span class="bundle-item-icon"><FileText v-if="item.resourceType === 'MARKDOWN'" :size="18" aria-hidden="true" /><Code2 v-else-if="item.resourceType === 'SNIPPET'" :size="18" aria-hidden="true" /><BookOpen v-else :size="18" aria-hidden="true" /></span>
                     <span class="bundle-item-copy"><strong>{{ item.title }}</strong><small>{{ typeLabels[item.resourceType] }}</small></span>
                     <Check v-if="selectedId === item.id" class="bundle-item-marker" :size="16" aria-hidden="true" /><ArrowRight v-else class="bundle-item-marker" :size="15" aria-hidden="true" />
@@ -259,9 +275,10 @@ onBeforeUnmount(() => {
             <EmptyState v-else compact title="没有匹配的标题" description="换一个关键词，或清空搜索查看全部内容。">
               <button class="bundle-action" type="button" @click="clearSearch">清空搜索</button>
             </EmptyState>
+            </div>
           </aside>
 
-          <section id="shared-content" class="bundle-reader" tabindex="-1" aria-label="分享内容阅读区域" :aria-busy="loading">
+          <section id="shared-content" ref="readerRoot" class="bundle-reader" tabindex="-1" aria-label="分享内容阅读区域" :aria-busy="loading">
             <div v-if="loading" class="bundle-reader-state" role="status">
               <LoaderCircle class="spin" :size="26" aria-hidden="true" />
               <h2>正在打开内容</h2><p>{{ selectedTitle }}</p><span>正在验证分享状态并加载最新正文…</span>
@@ -271,7 +288,7 @@ onBeforeUnmount(() => {
               <AlertCircle :size="28" aria-hidden="true" /><h2>{{ contentUnavailable ? '这项内容已不可用' : '正文加载失败' }}</h2><p>{{ contentError }}</p>
               <button v-if="!contentUnavailable" class="bundle-action" type="button" @click="loadBundle(selectedId)"><RefreshCw :size="16" aria-hidden="true" />重新加载正文</button>
             </div>
-            <SharedContentReader v-else-if="resource" :key="`${token}:${selectedId}`" :resource="resource" :image-base-path="imageBasePath" :authenticated-images="false" />
+            <SharedContentReader v-else-if="resource" :key="`${token}:${selectedId}`" :resource="resource" :image-base-path="imageBasePath" :authenticated-images="false" show-outline />
             <div v-else class="bundle-reader-state">
               <BookOpen :size="32" aria-hidden="true" /><h2>从目录中选择内容</h2><p>这里包含 {{ bundle.items.length }} 项分享，点击标题即可阅读。</p><span>文章、代码片段和流程图均以只读方式展示。</span>
             </div>
@@ -284,24 +301,29 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* Preserve viewport scrolling for sticky navigation under the global mobile overflow rule. */
+:global(html:has(.public-bundle-page)), :global(body:has(.public-bundle-page)) { overflow-x: clip; }
 .public-bundle-page { min-height: 100dvh; color: var(--text); background: var(--bg); }
 .bundle-skip-link { position: fixed; z-index: 20; top: 8px; left: 16px; padding: 12px 18px; transform: translateY(-180%); color: var(--accent-contrast); border-radius: var(--radius-sm); background: var(--accent); }
 .bundle-skip-link:focus { transform: translateY(0); }
-.bundle-topbar { min-height: 76px; display: flex; align-items: center; gap: 16px; padding: 14px clamp(16px, 4vw, 56px); border-bottom: 1px solid var(--border); background: var(--panel); }
+.bundle-topbar { position: sticky; z-index: 5; top: 0; min-height: 76px; display: flex; align-items: center; gap: 16px; padding: 14px clamp(16px, 4vw, 56px); border-bottom: 1px solid var(--border); background: var(--panel); }
 .bundle-public-badge { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; padding: 7px 11px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 999px; background: var(--accent-bg); font-size: 12px; font-weight: 650; white-space: nowrap; }
 .bundle-icon-button { width: 44px; height: 44px; display: grid; flex: 0 0 auto; place-items: center; padding: 0; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel); cursor: pointer; }
 .bundle-icon-button:hover { color: var(--text); background: var(--surface-raised); }
-.bundle-main { width: min(100% - 48px, 1320px); min-height: calc(100dvh - 148px); margin: 0 auto; padding: clamp(28px, 4vw, 48px) 0 40px; }
-.bundle-heading { margin-bottom: 28px; }
+.bundle-main { width: min(100% - 48px, 1600px); min-height: calc(100dvh - 148px); margin: 0 auto; padding: 28px 0 40px; }
+.bundle-heading { margin-bottom: 24px; }
 .bundle-heading > p { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--accent); font-size: var(--font-xs); font-weight: 650; }
-.bundle-heading h1 { margin: 12px 0; font-size: clamp(26px, 3vw, 38px); line-height: 1.3; letter-spacing: -.025em; }
+.bundle-heading h1 { margin: 8px 0 10px; font-size: clamp(24px, 2.2vw, 30px); line-height: 1.3; letter-spacing: -.025em; }
 .bundle-heading > div { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: var(--font-xs); }
 .bundle-heading > div > span { display: inline-flex; align-items: center; gap: 6px; }
 .bundle-heading svg { flex: 0 0 auto; }
-.bundle-layout { display: grid; grid-template-columns: minmax(248px, 300px) minmax(0, 1fr); align-items: start; gap: 24px; }
+.bundle-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); align-items: start; gap: 24px; }
 .bundle-directory { min-width: 0; padding: 20px 14px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); }
 .bundle-directory-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 6px; }
-.bundle-directory-heading h2 { margin: 0; font-size: 16px; }
+.bundle-directory-heading h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; }
+.bundle-directory-heading h2 svg { color: var(--muted); }
+.bundle-directory-toggle { display: none; }
+.bundle-directory-body { min-height: 0; }
 .bundle-directory-heading > span { color: var(--muted); font-size: 12px; }
 .bundle-search-label { display: block; margin: 20px 6px 7px; color: var(--subtle); font-size: 12px; }
 .bundle-search { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 44px; margin: 0 4px; padding: 0 11px; color: var(--muted); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-sunken); }
@@ -325,7 +347,7 @@ onBeforeUnmount(() => {
 .bundle-item-copy small { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
 .bundle-item-marker { margin-top: 8px; color: var(--muted); }
 .bundle-item.selected .bundle-item-marker { color: var(--accent); }
-.bundle-reader { min-width: 0; min-height: 480px; padding: clamp(24px, 3vw, 40px); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); scroll-margin-top: 16px; }
+.bundle-reader { min-width: 0; min-height: 480px; padding: clamp(24px, 2.5vw, 40px); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); scroll-margin-top: 96px; }
 .bundle-reader-state, .bundle-page-state { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; min-width: 0; min-height: 390px; color: var(--muted); text-align: center; }
 .bundle-reader-state > svg, .bundle-page-state > svg { flex: 0 0 auto; color: var(--accent); }
 .bundle-reader-state h2, .bundle-page-state h1 { margin: 4px 0 0; color: var(--text); font-size: 20px; line-height: 1.5; }
@@ -339,14 +361,24 @@ onBeforeUnmount(() => {
 .bundle-skeleton span:nth-child(2) { width: 84%; }.bundle-skeleton span:nth-child(3) { width: 60%; }
 .bundle-footer { padding: 0 20px 28px; color: var(--muted); font-size: 12px; line-height: 1.7; text-align: center; }
 @media (min-width: 801px) {
-  .bundle-directory { position: sticky; top: 20px; display: flex; flex-direction: column; max-height: calc(100dvh - 112px); }
-  .bundle-directory > :not(nav) { flex-shrink: 0; }
-  .bundle-directory > nav { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+  .bundle-directory { position: sticky; top: 100px; display: flex; flex-direction: column; max-height: calc(100dvh - 124px); }
+  .bundle-directory-heading { flex-shrink: 0; }
+  .bundle-directory-body { display: flex; flex-direction: column; }
+  .bundle-directory-body > :not(nav) { flex-shrink: 0; }
+  .bundle-directory-body > nav { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
   .bundle-items { max-height: none; overflow: visible; }
 }
 @media (max-width: 800px) {
   .bundle-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-  .bundle-directory { padding: 18px 14px 12px; }
+  .bundle-directory { padding: 6px; }
+  .bundle-directory-heading { display: none; }
+  .bundle-directory-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; width: 100%; padding: 8px 10px; color: var(--text); border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; }
+  .bundle-directory-toggle > span { font-size: 14px; font-weight: 650; }
+  .bundle-directory-toggle small { margin-left: auto; color: var(--muted); }
+  .bundle-directory-toggle .expanded { transform: rotate(180deg); }
+  .bundle-directory-body { display: none; padding: 0 6px 6px; }
+  .bundle-directory-body.is-expanded { display: block; }
+  .bundle-search-label { margin-top: 10px; }
   .bundle-items { max-height: 250px; }
   .bundle-reader { min-height: 360px; }
   .bundle-reader-state { min-height: 300px; }

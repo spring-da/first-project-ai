@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { Braces, Code2, Columns2, GitBranch, Sparkles, Undo2, Redo2, Check, ChevronsDownUp, ChevronsUpDown, ScanSearch } from 'lucide-vue-next'
 import CodeEditor from './CodeEditor.vue'
 import JsonFieldNode from './JsonFieldNode.vue'
+import JsonValueDialog from './JsonValueDialog.vue'
 import { escapeJsonText, extractEmbeddedJson, formatJsonText, parseJsonSource, preflightJson, unescapeJsonText, type JsonSource } from '../utils/codeJson'
 import { buildJsonTree, countJsonNodes, editJsonSource, type JsonEdit, type JsonNode } from '../utils/jsonStructure'
 import { appendBoundedHistory, measureCode } from '../utils/codeEditing'
@@ -16,6 +17,7 @@ const mode = ref<'code' | 'tree' | 'split'>('split')
 const history = ref<string[]>([])
 const future = ref<string[]>([])
 const expansion = ref({ open: false, revision: 0 })
+const expandedValue = shallowRef<{ label: string; value: string } | null>(null)
 const parsed = shallowRef<JsonSource>(parseJsonSource(''))
 const structure = shallowRef<{ root: JsonNode | null; error: string; nodeCount: number }>({ root: null, error: '', nodeCount: 0 })
 const analyzing = ref(false)
@@ -183,6 +185,10 @@ function edit(path: number[], action: JsonEdit) {
   try { update(editJsonSource(props.modelValue, path, action)) }
   catch (error) { notifications.notify((error as Error).message, { type: 'warning' }) }
 }
+
+function previewValue(label: string, value: string) {
+  expandedValue.value = { label, value }
+}
 </script>
 
 <template>
@@ -210,7 +216,7 @@ function edit(path: number[], action: JsonEdit) {
       <div v-if="mode !== 'code'" class="json-editor__structure">
         <div class="json-editor__pane-label"><GitBranch :size="13" />结构编辑<small>{{ structure.nodeCount > 2_000 ? '大型结构 · 请按需展开' : '直接修改字段、类型和值' }}</small><button type="button" aria-label="展开全部字段" :title="canExpandAll ? '展开全部' : '字段过多，请按需展开'" :disabled="validationPaused || buildingTree || !canExpandAll" @click="expandAll"><ChevronsDownUp :size="14" /></button><button type="button" aria-label="折叠全部字段" title="折叠全部" :disabled="validationPaused || buildingTree" @click="expansion = { open: false, revision: expansion.revision + 1 }"><ChevronsUpDown :size="14" /></button></div>
         <div v-if="buildingTree && !validationPaused" class="json-editor__empty json-editor__empty--progress"><GitBranch :size="28" /><strong>正在生成按需结构…</strong><p>大型内容不会自动展开全部字段。</p></div>
-        <div v-else-if="structure.root && !validationPaused" class="json-editor__tree-scroll"><JsonFieldNode :node="structure.root" :path="[]" label="$" :expansion="expansion" @edit="edit" /></div>
+        <div v-else-if="structure.root && !validationPaused" class="json-editor__tree-scroll"><JsonFieldNode :node="structure.root" :path="[]" label="$" :expansion="expansion" @edit="edit" @preview="previewValue" /></div>
         <div v-else class="json-editor__empty">
           <Braces :size="30" /><strong>{{ analyzing ? '正在检查 JSON…' : modelValue.trim() ? '完善 JSON 后即可编辑结构' : '从一个结构开始' }}</strong>
           <p>{{ analyzing ? '输入与粘贴不会被同步解析阻塞。' : validationPaused ? '源码保持原样，不再反复解析；修正后点击“格式化”重新校验。' : modelValue.trim() ? '源码会保留你的输入。' : '粘贴已有 JSON，或创建一个空对象、数组。' }}</p>
@@ -222,6 +228,7 @@ function edit(path: number[], action: JsonEdit) {
       </div>
     </div>
     <div class="json-editor__status" role="status"><span :class="{ valid: parsed.valid && !analyzing && !validationPaused, paused: validationPaused }"><Check v-if="parsed.valid && !analyzing && !validationPaused" :size="12" />{{ validationPaused ? '自动解析已暂停 · 修正后点格式化' : analyzing ? '正在校验（不阻塞输入）' : parsed.valid ? (escaped ? '已转义 · 保留结构' : 'JSON 格式有效') : 'JSON 待完善' }}</span><span>{{ metrics.lines }} 行 · {{ metrics.characters.toLocaleString() }} 字符</span><p v-if="largeSource">已启用大文本性能模式：源码使用原生文本渲染，结构树默认折叠并限制批量展开。</p><p v-else-if="validationPaused">无效内容只作为纯文本保留，不会扫描、格式化或生成结构树。</p><p v-else-if="escaped">转义文本保留实际换行；作为标准 JSON 使用前请点“去转义”。</p></div>
+    <JsonValueDialog v-if="expandedValue" :label="expandedValue.label" :value="expandedValue.value" @close="expandedValue = null" />
   </section>
 </template>
 
